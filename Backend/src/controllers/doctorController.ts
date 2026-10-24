@@ -4,6 +4,7 @@ import prisma from '../utils/prisma';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { TreatmentStatus } from '@prisma/client';
 import OpenAI from 'openai';
+import { logAudit } from '../utils/auditLogger';
 
 // Helper to check if doctor is verified
 const isDoctorVerified = async (userId: string) => {
@@ -286,6 +287,13 @@ export const scanPatientQr = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Patient not found for this QR code' });
     }
 
+    if (req.user?.id) {
+      await logAudit(req.user.id, 'DOCTOR_SCAN_PATIENT_QR', req, {
+        qrId,
+        patientId: patientProfile.user.id,
+      });
+    }
+
     res.json({
       id: patientProfile.user.id,
       patientId: patientProfile.user.id,
@@ -330,6 +338,11 @@ export const requestHistoryAccess = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    await logAudit(doctorId, 'DOCTOR_REQUEST_HISTORY_ACCESS', req, {
+      patientId,
+      requestId: request.id,
+    });
+
     res.status(201).json({ message: 'Access request sent to patient', request });
   } catch (error) {
     console.error('Error requesting history access:', error);
@@ -359,14 +372,8 @@ export const getPatientHistory = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'You do not have active permission to view this patient\'s history' });
     }
 
-    // Log the access
-    await prisma.auditLog.create({
-      data: {
-        userId: doctorId,
-        action: 'VIEWED_PATIENT_HISTORY',
-        details: { patientId },
-      },
-    });
+    // Log the access using unified auditLogger
+    await logAudit(doctorId, 'VIEWED_PATIENT_HISTORY', req, { patientId });
 
     const treatments = await prisma.treatment.findMany({
       where: { patientId, status: 'CONFIRMED' },
@@ -385,15 +392,52 @@ export const getPatientHistory = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Helper to validate and normalize consultation draft output
+const validateAndNormalizeConsultation = (raw: any) => {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid consultation draft output: expected JSON object');
+  }
+
+  const cleanString = (val: any) => {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      return val.trim();
+    }
+    return null;
+  };
+
+  const prescriptions = Array.isArray(raw.prescriptions)
+    ? raw.prescriptions
+        .filter((p: any) => p && typeof p === 'object' && p.medicineName)
+        .map((p: any) => ({
+          medicineName: String(p.medicineName).trim(),
+          strength: cleanString(p.strength),
+          dosage: cleanString(p.dosage),
+          frequency: cleanString(p.frequency),
+          duration: cleanString(p.duration),
+          route: cleanString(p.route),
+          instructions: cleanString(p.instructions),
+        }))
+    : [];
+
+  return {
+    condition: cleanString(raw.condition),
+    symptoms: cleanString(raw.symptoms),
+    diagnosis: cleanString(raw.diagnosis),
+    doctorNotes: cleanString(raw.doctorNotes),
+    prescriptions,
+  };
+};
+
 export const draftFromAudio = async (req: AuthRequest, res: Response) => {
   try {
-    const { text } = req.body;
+    const { text, audioBase64, mimeType } = req.body;
 
-    if (!text) {
-      return res.status(400).json({ error: 'Text is required' });
+    if (!text && !audioBase64) {
+      return res.status(400).json({ error: 'Either transcript text or audioBase64 is required' });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     const openaiKey = process.env.OPENAI_API_KEY;
 
     if (!geminiKey && !openaiKey) {
@@ -401,77 +445,114 @@ export const draftFromAudio = async (req: AuthRequest, res: Response) => {
     }
 
     const prompt = `
-You are a medical assistant parsing transcribed voice notes from a doctor.
-Extract the following information into a structured JSON format.
-If a field is not mentioned, leave it as an empty string (or empty array for prescriptions).
-
-JSON Schema:
+You are an expert clinical medical scribe. Parse the doctor-patient consultation and output a strict JSON object matching this exact schema:
 {
-  "condition": "The main medical condition or chief complaint",
-  "symptoms": "Detailed symptoms mentioned",
-  "diagnosis": "The doctor's diagnosis, if any",
-  "doctorNotes": "Any other notes, observations, or advice",
+  "condition": "Chief complaint or primary medical condition, or null if not mentioned",
+  "symptoms": "Detailed symptoms mentioned by patient or doctor, or null if not mentioned",
+  "diagnosis": "Doctor's formal diagnosis or clinical assessment, or null if not mentioned",
+  "doctorNotes": "Advice, lifestyle instructions, follow-up schedule, or notes, or null if not mentioned",
   "prescriptions": [
     {
-      "medicineName": "Name of the medicine",
-      "strength": "Strength (e.g., 500mg)",
-      "dosage": "Dosage (e.g., 1 tablet)",
-      "frequency": "Frequency (e.g., twice a day)",
-      "duration": "Duration (e.g., 5 days)",
-      "route": "Route of administration (e.g., oral)",
-      "instructions": "Specific instructions (e.g., after meals)"
+      "medicineName": "Exact medicine name (required)",
+      "strength": "e.g. 500mg, 10ml, or null",
+      "dosage": "e.g. 1 tablet, 2 puffs, or null",
+      "frequency": "e.g. twice daily, every 8 hours, or null",
+      "duration": "e.g. 5 days, 2 weeks, or null",
+      "route": "e.g. oral, topical, or null",
+      "instructions": "e.g. after meals, with water, or null"
     }
   ]
 }
 
-Transcribed Text:
-"${text}"
+CRITICAL RULES:
+1. Return strictly valid JSON.
+2. If any field or detail was not mentioned, set its value to null (or empty array [] for prescriptions).
+3. Do not invent any medication not mentioned in the audio or transcript.
+${text ? `\nConsultation Transcript:\n"${text}"` : ''}
 `;
 
+    const executeAiCall = async (): Promise<any> => {
+      if (geminiKey) {
+        const parts: any[] = [];
+        if (audioBase64) {
+          parts.push({
+            inlineData: {
+              mimeType: mimeType || 'audio/webm',
+              data: audioBase64,
+            },
+          });
+        }
+        parts.push({ text: prompt });
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          }),
+          signal: AbortSignal.timeout(25000),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Gemini API error: ${response.status} - ${errText}`);
+        }
+
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!content) {
+          throw new Error('No content returned from Gemini');
+        }
+
+        const parsed = JSON.parse(content);
+        return validateAndNormalizeConsultation(parsed);
+      } else if (openaiKey) {
+        const openai = new OpenAI({ apiKey: openaiKey });
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a clinical scribe assistant that strictly outputs valid JSON matching the schema.' },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+        });
+
+        const content = response.choices[0].message.content;
+        if (!content) {
+          throw new Error('No content returned from OpenAI');
+        }
+
+        const parsed = JSON.parse(content);
+        return validateAndNormalizeConsultation(parsed);
+      }
+    };
+
+    // Execute with one automatic retry on failure
     let draftData: any = null;
-
-    if (geminiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-        signal: AbortSignal.timeout(20000),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Gemini API error: ${response.status} - ${errText}`);
-      }
-
-      const data = await response.json();
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!content) {
-        throw new Error('No content returned from Gemini');
-      }
-      draftData = JSON.parse(content);
-    } else if (openaiKey) {
-      const openai = new OpenAI({ apiKey: openaiKey });
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'You are a helpful medical assistant that outputs JSON only. Do not wrap with markdown blocks.' },
-          { role: 'user', content: prompt },
-        ],
-        response_format: { type: 'json_object' },
-      });
-
-      const content = response.choices[0].message.content;
-      if (!content) {
-        throw new Error('No content returned from OpenAI');
-      }
-      draftData = JSON.parse(content);
+    try {
+      draftData = await executeAiCall();
+    } catch (firstErr) {
+      console.warn('Initial AI consultation parse attempt failed, retrying once...', firstErr);
+      draftData = await executeAiCall();
     }
 
-    res.json({ message: 'Structured data drafted. Please review before confirming.', data: draftData });
+    if (req.user?.id) {
+      await logAudit(req.user.id, 'DOCTOR_DRAFT_CONSULTATION', req, {
+        patientId: req.body.patientId,
+        hasAudio: !!audioBase64,
+        transcriptLength: text?.length,
+      });
+    }
+
+    res.json({
+      message: 'Structured data drafted. Please review before confirming.',
+      data: draftData,
+    });
   } catch (error: any) {
     console.error('Error drafting from audio text:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -519,6 +600,13 @@ export const createTreatment = async (req: AuthRequest, res: Response) => {
         where: { id: newTreatment.id },
         include: { prescriptions: true },
       });
+    });
+
+    await logAudit(doctorId, 'DOCTOR_CREATE_TREATMENT', req, {
+      treatmentId: treatment?.id,
+      patientId,
+      status: status || 'DRAFT',
+      condition,
     });
 
     res.status(201).json(treatment);
@@ -594,6 +682,12 @@ export const editTreatment = async (req: AuthRequest, res: Response) => {
       });
     });
 
+    await logAudit(doctorId, 'DOCTOR_EDIT_TREATMENT', req, {
+      treatmentId,
+      status: updatedTreatment?.status,
+      amendmentReason,
+    });
+
     res.json({ message: 'Treatment updated successfully', treatment: updatedTreatment });
   } catch (error) {
     console.error('Error editing treatment:', error);
@@ -625,6 +719,13 @@ export const submitVerification = async (req: AuthRequest, res: Response) => {
         ...(licenseDoc && { verificationDocumentUrl: licenseDoc }),
         ...(qualDoc && { qualificationDocumentUrl: qualDoc }),
       },
+    });
+
+    await logAudit(doctorId, 'DOCTOR_SUBMIT_VERIFICATION', req, {
+      licenseNumber,
+      specialization,
+      hasLicenseDoc: !!licenseDoc,
+      hasQualDoc: !!qualDoc,
     });
 
     res.json({ message: 'Verification documents submitted successfully', profile: updatedProfile });

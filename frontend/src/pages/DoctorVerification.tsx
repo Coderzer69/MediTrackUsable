@@ -1,18 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Bell, ChevronDown,
   Users, Calendar, FileText, Pill, FolderOpen, Settings,
   ShieldCheck, UploadCloud, Lock, FileBadge, HelpCircle,
-  Clock, LogOut, Menu, X
+  Clock, LogOut, Menu, X, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 
 export default function DoctorVerification() {
   const navigate = useNavigate();
-  const { user, login, logout } = useAuth();
+  const { user, login, logout, refreshAuth } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
+
+  useEffect(() => {
+    if (user?.verificationStatus === 'APPROVED') {
+      navigate('/doctor/dashboard');
+    }
+  }, [user, navigate]);
+
+  const handleCheckStatus = async () => {
+    setCheckingStatus(true);
+    try {
+      const updated = await refreshAuth();
+      if (updated?.verificationStatus === 'APPROVED') {
+        navigate('/doctor/dashboard');
+      }
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const [formData, setFormData] = useState({
     licenseNumber: '',
@@ -281,24 +301,54 @@ export default function DoctorVerification() {
               </div>
             )}
 
-            {user?.verificationStatus === 'PENDING' || user?.documentsSubmitted ? (
+            {(user?.verificationStatus === 'PENDING' || (user?.documentsSubmitted && user?.verificationStatus !== 'REJECTED')) && !resubmitting ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center flex flex-col items-center">
                 <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mb-6">
                   <Clock className="w-8 h-8 text-amber-500" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900 mb-2">Verification Pending</h2>
                 <p className="text-[14.5px] text-gray-500 max-w-md leading-relaxed mb-8">
-                  Your documents have been submitted successfully and are currently under review by our admin team. This usually takes 1-2 business days.
+                  Your documents have been submitted successfully and are currently under review by our admin team.
                 </p>
-                <button
-                  onClick={() => navigate('/')}
-                  className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[14px] rounded-xl transition-colors"
-                >
-                  Return Home
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={handleCheckStatus}
+                    disabled={checkingStatus}
+                    className="px-5 py-2.5 bg-[#0b3b2c] hover:bg-[#082a1f] text-white font-bold text-[13.5px] rounded-xl transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${checkingStatus ? 'animate-spin' : ''}`} />
+                    {checkingStatus ? 'Checking Status...' : 'Check Status'}
+                  </button>
+                  <button
+                    onClick={() => setResubmitting(true)}
+                    className="px-5 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-[13.5px] rounded-xl transition-colors"
+                  >
+                    Re-upload Documents
+                  </button>
+                  <button
+                    onClick={() => navigate('/')}
+                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[13.5px] rounded-xl transition-colors"
+                  >
+                    Return Home
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-8">
+                {user?.verificationStatus === 'REJECTED' && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-3.5">
+                    <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="text-sm font-bold text-red-900 mb-1">Verification Application Rejected</h3>
+                      <p className="text-xs text-red-800 leading-relaxed mb-2">
+                        Reason from Admin: <strong>{user?.rejectionReason || 'Uploaded documents did not meet requirements.'}</strong>
+                      </p>
+                      <p className="text-xs text-red-700 font-medium">
+                        Please review the feedback above, make necessary corrections to your license info, and upload valid documents below.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {/* Section 1: Professional Information */}
                 <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
                   <h2 className="text-[16px] font-bold text-gray-900 mb-6 pb-4 border-b border-gray-50">

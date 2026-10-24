@@ -6,6 +6,8 @@ const authMiddleware_1 = require("../middlewares/authMiddleware");
 const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticate, (0, authMiddleware_1.requireRole)(['PATIENT']));
 router.get('/profile', patientController_1.getProfile);
+router.patch('/profile', patientController_1.updateProfile);
+router.patch('/password', patientController_1.updatePassword);
 router.get('/treatments', patientController_1.getTreatments);
 router.get('/access-requests', patientController_1.getAccessRequests);
 router.patch('/access-requests/:id', patientController_1.updateAccessRequest);

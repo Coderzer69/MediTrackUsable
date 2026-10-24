@@ -12,11 +12,22 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 
 const DoctorProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'DOCTOR') return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
 
-  if (!isAuthenticated) return <Navigate to="/login" />;
-  if (user?.role !== 'DOCTOR') return <Navigate to="/" />;
+const PatientProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'PATIENT') return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
 
-
+const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'ADMIN') return <Navigate to="/" replace />;
   return <>{children}</>;
 };
 
@@ -31,7 +42,14 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/patient/signup" element={<PatientSignup />} />
             <Route path="/doctor/signup" element={<DoctorSignup />} />
-            <Route path="/patient/dashboard" element={<PatientDashboard />} />
+            <Route
+              path="/patient/dashboard"
+              element={
+                <PatientProtectedRoute>
+                  <PatientDashboard />
+                </PatientProtectedRoute>
+              }
+            />
             <Route
               path="/doctor/dashboard"
               element={
@@ -40,8 +58,23 @@ function App() {
                 </DoctorProtectedRoute>
               }
             />
-            <Route path="/doctor/verify" element={<DoctorVerification />} />
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route
+              path="/doctor/verify"
+              element={
+                <DoctorProtectedRoute>
+                  <DoctorVerification />
+                </DoctorProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/dashboard"
+              element={
+                <AdminProtectedRoute>
+                  <AdminDashboard />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </Router>

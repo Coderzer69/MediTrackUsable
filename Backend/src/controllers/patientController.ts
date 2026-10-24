@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcrypt';
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { AccessRequestStatus } from '@prisma/client';
+import { logAudit } from '../utils/auditLogger';
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -9,7 +11,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     const profile = await prisma.patientProfile.findUnique({
       where: { userId },
       include: {
-        user: { select: { name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, createdAt: true } },
       },
     });
 
@@ -18,6 +20,99 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     res.json(profile);
   } catch (error) {
     console.error('Error fetching patient profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
+
+    const existingEmail = await prisma.user.findFirst({
+      where: {
+        email: email.trim().toLowerCase(),
+        NOT: { id: userId },
+      },
+    });
+
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email is already in use by another account' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+      },
+      include: {
+        patientProfile: true,
+      },
+    });
+
+    await logAudit(userId, 'PATIENT_UPDATE_PROFILE', req, {
+      name: updatedUser.name,
+      email: updatedUser.email,
+    });
+
+    res.json({
+      message: 'Profile updated successfully',
+      profile: updatedUser.patientProfile,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating patient profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updatePassword = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+
+    if (!user || !user.passwordHash) {
+      return res.status(400).json({ error: 'Password update is not available for this account' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash },
+    });
+
+    await logAudit(userId, 'PATIENT_UPDATE_PASSWORD', req);
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Error updating patient password:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -94,6 +189,13 @@ export const updateAccessRequest = async (req: AuthRequest, res: Response) => {
     const updatedRequest = await prisma.historyAccessRequest.update({
       where: { id: requestId },
       data: { status: status as AccessRequestStatus, expiresAt },
+    });
+
+    await logAudit(userId, 'PATIENT_UPDATE_ACCESS_REQUEST', req, {
+      requestId,
+      doctorId: request.doctorId,
+      status,
+      expiresAt,
     });
 
     res.json({ message: `Access request ${status}`, request: updatedRequest });

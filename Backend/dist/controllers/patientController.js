@@ -12,15 +12,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateAccessRequest = exports.getAccessRequests = exports.getTreatments = exports.getProfile = void 0;
+exports.updateAccessRequest = exports.getAccessRequests = exports.getTreatments = exports.updatePassword = exports.updateProfile = exports.getProfile = void 0;
+const bcrypt_1 = __importDefault(require("bcrypt"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const auditLogger_1 = require("../utils/auditLogger");
 const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const userId = req.user.id;
         const profile = yield prisma_1.default.patientProfile.findUnique({
             where: { userId },
             include: {
-                user: { select: { name: true, email: true } },
+                user: { select: { id: true, name: true, email: true, createdAt: true } },
             },
         });
         if (!profile)
@@ -33,6 +35,87 @@ const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     }
 });
 exports.getProfile = getProfile;
+const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const userId = req.user.id;
+        const { name, email } = req.body;
+        if (!name || !email) {
+            return res.status(400).json({ error: 'Name and email are required' });
+        }
+        const existingEmail = yield prisma_1.default.user.findFirst({
+            where: {
+                email: email.trim().toLowerCase(),
+                NOT: { id: userId },
+            },
+        });
+        if (existingEmail) {
+            return res.status(400).json({ error: 'Email is already in use by another account' });
+        }
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: {
+                name: name.trim(),
+                email: email.trim().toLowerCase(),
+            },
+            include: {
+                patientProfile: true,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'PATIENT_UPDATE_PROFILE', req, {
+            name: updatedUser.name,
+            email: updatedUser.email,
+        });
+        res.json({
+            message: 'Profile updated successfully',
+            profile: updatedUser.patientProfile,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error updating patient profile:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.updateProfile = updateProfile;
+const updatePassword = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const userId = req.user.id;
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+        }
+        const user = yield prisma_1.default.user.findUnique({
+            where: { id: userId },
+            select: { passwordHash: true },
+        });
+        if (!user || !user.passwordHash) {
+            return res.status(400).json({ error: 'Password update is not available for this account' });
+        }
+        const isMatch = yield bcrypt_1.default.compare(currentPassword, user.passwordHash);
+        if (!isMatch) {
+            return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+        const newPasswordHash = yield bcrypt_1.default.hash(newPassword, 10);
+        yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: { passwordHash: newPasswordHash },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'PATIENT_UPDATE_PASSWORD', req);
+        res.json({ message: 'Password updated successfully' });
+    }
+    catch (error) {
+        console.error('Error updating patient password:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.updatePassword = updatePassword;
 const getTreatments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const userId = req.user.id;
@@ -98,6 +181,12 @@ const updateAccessRequest = (req, res) => __awaiter(void 0, void 0, void 0, func
         const updatedRequest = yield prisma_1.default.historyAccessRequest.update({
             where: { id: requestId },
             data: { status: status, expiresAt },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'PATIENT_UPDATE_ACCESS_REQUEST', req, {
+            requestId,
+            doctorId: request.doctorId,
+            status,
+            expiresAt,
         });
         res.json({ message: `Access request ${status}`, request: updatedRequest });
     }

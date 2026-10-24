@@ -7,6 +7,9 @@ import prisma from '../utils/prisma';
 import { generatePatientQrCodeId } from '../utils/qrGenerator';
 import { Role } from '@prisma/client';
 
+import { AuthRequest } from '../middlewares/authMiddleware';
+import { logAudit } from '../utils/auditLogger';
+
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID
 );
@@ -18,10 +21,43 @@ const buildAuthUser = (user: any) => ({
   role: user.role,
   ...(user.doctorProfile && {
     specialization: user.doctorProfile.specialization || undefined,
+    licenseNumber: user.doctorProfile.licenseNumber || undefined,
     verificationStatus: user.doctorProfile.verificationStatus,
+    rejectionReason: user.doctorProfile.rejectionReason || undefined,
     documentsSubmitted: !!user.doctorProfile.verificationDocumentUrl,
   }),
+  ...(user.patientProfile && {
+    qrCodeIdentifier: user.patientProfile.qrCodeIdentifier,
+  }),
 });
+
+export const getMe = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        doctorProfile: true,
+        patientProfile: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({
+      user: buildAuthUser(user),
+    });
+  } catch (error) {
+    console.error('getMe error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 // ==================== REGISTER ====================
 
@@ -109,6 +145,11 @@ export const register = async (req: Request, res: Response) => {
       });
     });
 
+    await logAudit(user!.id, 'AUTH_REGISTER', req, {
+      role: user!.role,
+      email: user!.email,
+    });
+
     return res.status(201).json({
       message: 'User registered successfully',
       userId: user!.id,
@@ -168,6 +209,11 @@ export const login = async (req: Request, res: Response) => {
         expiresIn: '24h',
       }
     );
+
+    await logAudit(user.id, 'AUTH_LOGIN', req, {
+      role: user.role,
+      email: user.email,
+    });
 
     return res.json({
       token,
@@ -329,6 +375,11 @@ export const oauthLogin = async (req: Request, res: Response) => {
     );
 
     // ==================== RESPONSE ====================
+
+    await logAudit(user.id, 'AUTH_OAUTH_LOGIN', req, {
+      role: user.role,
+      email: user.email,
+    });
 
     return res.json({
       token,

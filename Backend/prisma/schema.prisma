@@ -63,11 +63,12 @@ model DoctorProfile {
   specialization           String?
   licenseNumber            String?                  @unique
   verificationStatus       DoctorVerificationStatus @default(INCOMPLETE)
+  rejectionReason          String?
   verifiedById             String?
   verificationDocumentUrl  String?
   qualificationDocumentUrl String?
 
-  user       User  @relation(fields: [userId], references: [id])
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   verifiedBy User? @relation("AdminVerifiedDoctors", fields: [verifiedById], references: [id])
 }
 
@@ -76,7 +77,7 @@ model PatientProfile {
   userId           String @unique
   qrCodeIdentifier String @unique
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Treatment {
@@ -92,8 +93,8 @@ model Treatment {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  doctor        User                 @relation("DoctorTreatments", fields: [doctorId], references: [id])
-  patient       User                 @relation("PatientTreatments", fields: [patientId], references: [id])
+  doctor        User                 @relation("DoctorTreatments", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       User                 @relation("PatientTreatments", fields: [patientId], references: [id], onDelete: Cascade)
   prescriptions Prescription[]
   amendments    TreatmentAmendment[]
 }
@@ -111,7 +112,7 @@ model Prescription {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  treatment Treatment @relation(fields: [treatmentId], references: [id])
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
 }
 
 model TreatmentAmendment {
@@ -136,8 +137,8 @@ model HistoryAccessRequest {
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
 
-  doctor  User @relation("DoctorAccessRequests", fields: [doctorId], references: [id])
-  patient User @relation("PatientAccessRequests", fields: [patientId], references: [id])
+  doctor  User @relation("DoctorAccessRequests", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient User @relation("PatientAccessRequests", fields: [patientId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
@@ -147,5 +148,5 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
