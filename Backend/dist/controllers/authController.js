@@ -118,7 +118,7 @@ const register = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             }
             return prismaTx.user.findUnique({
                 where: { id: newUser.id },
-                include: { doctorProfile: true },
+                include: { doctorProfile: true, patientProfile: true },
             });
         }));
         yield (0, auditLogger_1.logAudit)(user.id, 'AUTH_REGISTER', req, {
@@ -150,7 +150,7 @@ const login = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         }
         const user = yield prisma_1.default.user.findUnique({
             where: { email },
-            include: { doctorProfile: true },
+            include: { doctorProfile: true, patientProfile: true },
         });
         if (!user || !user.passwordHash) {
             return res.status(401).json({
@@ -226,7 +226,7 @@ const oauthLogin = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                     { email: email },
                 ],
             },
-            include: { doctorProfile: true },
+            include: { doctorProfile: true, patientProfile: true },
         });
         if (user && role && user.role !== role) {
             return res.status(400).json({
@@ -284,7 +284,7 @@ const oauthLogin = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                 }
                 const userWithProfile = yield prismaTx.user.findUnique({
                     where: { id: newUser.id },
-                    include: { doctorProfile: true },
+                    include: { doctorProfile: true, patientProfile: true },
                 });
                 return userWithProfile;
             }));

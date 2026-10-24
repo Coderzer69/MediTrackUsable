@@ -544,3 +544,62 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const getDoctorById = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const doctor = await prisma.doctorProfile.findFirst({
+      where: {
+        OR: [{ id }, { userId: id }],
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!doctor) {
+      return res.status(404).json({ error: 'Doctor not found' });
+    }
+
+    res.json(doctor);
+  } catch (error) {
+    console.error('Error fetching doctor details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateAdminProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const adminId = req.user?.id;
+    if (!adminId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { name, password } = req.body;
+    const updateData: any = {};
+    if (name && name.trim()) {
+      updateData.name = name.trim();
+    }
+    if (password && password.trim()) {
+      updateData.passwordHash = await bcrypt.hash(password.trim(), 10);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: adminId },
+      data: updateData,
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    await logAudit(adminId, 'ADMIN_UPDATE_PROFILE', req, {
+      updatedFields: Object.keys(updateData),
+    });
+
+    res.json({ message: 'Profile updated successfully', user: updatedUser });
+  } catch (error: any) {
+    console.error('Error updating admin profile:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+};
+

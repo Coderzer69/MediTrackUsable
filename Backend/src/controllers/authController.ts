@@ -141,7 +141,7 @@ export const register = async (req: Request, res: Response) => {
 
       return prismaTx.user.findUnique({
         where: { id: newUser.id },
-        include: { doctorProfile: true },
+        include: { doctorProfile: true, patientProfile: true },
       });
     });
 
@@ -178,7 +178,7 @@ export const login = async (req: Request, res: Response) => {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { doctorProfile: true },
+      include: { doctorProfile: true, patientProfile: true },
     });
 
     if (!user || !user.passwordHash) {
@@ -275,7 +275,7 @@ export const oauthLogin = async (req: Request, res: Response) => {
           { email: email },
         ],
       },
-      include: { doctorProfile: true },
+      include: { doctorProfile: true, patientProfile: true },
     });
 
     if (user && role && user.role !== role) {
@@ -345,7 +345,7 @@ export const oauthLogin = async (req: Request, res: Response) => {
 
         const userWithProfile = await prismaTx.user.findUnique({
           where: { id: newUser.id },
-          include: { doctorProfile: true },
+          include: { doctorProfile: true, patientProfile: true },
         });
 
         return userWithProfile;

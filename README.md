@@ -96,14 +96,14 @@ npm start
 ```
 The backend starts at `http://localhost:3000`. Test health status at `http://localhost:3000/health`.
 
-### 2. Frontend Setup
+### 2. Frontend Setup (Patients & Doctors Portal)
 
 ```bash
-cd frontend
+cd Frontend
 npm install
 ```
 
-Configure environment in `frontend/.env`:
+Configure environment in `Frontend/.env`:
 ```env
 VITE_API_URL=http://localhost:3000/api
 ```
@@ -114,13 +114,31 @@ npm run dev
 ```
 Open `http://localhost:5173` in your browser.
 
+### 3. Admin Portal Setup (Dedicated Admin Application)
+
+```bash
+cd admin
+npm install
+```
+
+Configure environment in `admin/.env`:
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+Start the Vite development server:
+```bash
+npm run dev
+```
+Open the designated port (e.g. `http://localhost:5174` or as displayed by Vite) in your browser.
+
 ---
 
 ## Seed Accounts & Testing Credentials
 
 | Role | Email | Password | Access / Status |
 | :--- | :--- | :--- | :--- |
-| **System Admin** | `admin@meditrack.com` | `password123` | Root admin panel (`/admin`) |
+| **System Admin** | `admin@meditrack.com` | `password123` | Root admin panel (`/admin` in both apps) |
 | **Verified Doctor** | `doctor.verified@meditrack.com` | `password123` | Approved doctor (`/doctor/dashboard`) |
 | **Patient** | `patient.demo@meditrack.com` | `password123` | Patient dashboard (`/patient/dashboard`) |
 
@@ -136,7 +154,9 @@ Open `http://localhost:5173` in your browser.
 
 ### Admin Routes (`/api/admin`)
 - `GET /dashboard-stats` - Aggregate metrics (doctors, patients, treatments, pending verifications).
+- `PUT /profile` & `PATCH /profile` - Update admin profile name and password credentials.
 - `GET /doctors` - List all doctors with profile details.
+- `GET /doctors/:id` - Fetch single doctor by profile or user ID.
 - `POST /doctors` - Create a new doctor account with verification status.
 - `PATCH /doctors/:id` - Update doctor profile and credentials.
 - `DELETE /doctors/:id` - Permanently delete doctor.

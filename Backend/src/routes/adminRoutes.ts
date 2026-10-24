@@ -13,6 +13,8 @@ import {
   getTreatments,
   getHistoryAccessRequests,
   getAuditLogs,
+  getDoctorById,
+  updateAdminProfile,
 } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middlewares/authMiddleware';
 
@@ -22,8 +24,13 @@ router.use(authenticate, requireRole(['ADMIN']));
 
 router.get('/dashboard-stats', getDashboardStats);
 
+// Admin Profile
+router.put('/profile', updateAdminProfile);
+router.patch('/profile', updateAdminProfile);
+
 // Doctors CRUD & Verification
 router.get('/doctors', getDoctors);
+router.get('/doctors/:id', getDoctorById);
 router.post('/doctors', createDoctor);
 router.patch('/doctors/:id', updateDoctor);
 router.delete('/doctors/:id', deleteDoctor);

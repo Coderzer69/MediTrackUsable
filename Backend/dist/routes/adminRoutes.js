@@ -6,8 +6,12 @@ const authMiddleware_1 = require("../middlewares/authMiddleware");
 const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticate, (0, authMiddleware_1.requireRole)(['ADMIN']));
 router.get('/dashboard-stats', adminController_1.getDashboardStats);
+// Admin Profile
+router.put('/profile', adminController_1.updateAdminProfile);
+router.patch('/profile', adminController_1.updateAdminProfile);
 // Doctors CRUD & Verification
 router.get('/doctors', adminController_1.getDoctors);
+router.get('/doctors/:id', adminController_1.getDoctorById);
 router.post('/doctors', adminController_1.createDoctor);
 router.patch('/doctors/:id', adminController_1.updateDoctor);
 router.delete('/doctors/:id', adminController_1.deleteDoctor);

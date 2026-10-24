@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAuditLogs = exports.getHistoryAccessRequests = exports.getTreatments = exports.deletePatient = exports.updatePatient = exports.createPatient = exports.getPatients = exports.getDashboardStats = exports.verifyDoctor = exports.deleteDoctor = exports.updateDoctor = exports.createDoctor = exports.getDoctors = void 0;
+exports.updateAdminProfile = exports.getDoctorById = exports.getAuditLogs = exports.getHistoryAccessRequests = exports.getTreatments = exports.deletePatient = exports.updatePatient = exports.createPatient = exports.getPatients = exports.getDashboardStats = exports.verifyDoctor = exports.deleteDoctor = exports.updateDoctor = exports.createDoctor = exports.getDoctors = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const client_1 = require("@prisma/client");
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -509,3 +509,58 @@ const getAuditLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     }
 });
 exports.getAuditLogs = getAuditLogs;
+const getDoctorById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const id = req.params.id;
+        const doctor = yield prisma_1.default.doctorProfile.findFirst({
+            where: {
+                OR: [{ id }, { userId: id }],
+            },
+            include: {
+                user: {
+                    select: { id: true, name: true, email: true, createdAt: true },
+                },
+            },
+        });
+        if (!doctor) {
+            return res.status(404).json({ error: 'Doctor not found' });
+        }
+        res.json(doctor);
+    }
+    catch (error) {
+        console.error('Error fetching doctor details:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getDoctorById = getDoctorById;
+const updateAdminProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const adminId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+        if (!adminId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const { name, password } = req.body;
+        const updateData = {};
+        if (name && name.trim()) {
+            updateData.name = name.trim();
+        }
+        if (password && password.trim()) {
+            updateData.passwordHash = yield bcrypt_1.default.hash(password.trim(), 10);
+        }
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: adminId },
+            data: updateData,
+            select: { id: true, name: true, email: true, role: true },
+        });
+        yield (0, auditLogger_1.logAudit)(adminId, 'ADMIN_UPDATE_PROFILE', req, {
+            updatedFields: Object.keys(updateData),
+        });
+        res.json({ message: 'Profile updated successfully', user: updatedUser });
+    }
+    catch (error) {
+        console.error('Error updating admin profile:', error);
+        res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+});
+exports.updateAdminProfile = updateAdminProfile;
