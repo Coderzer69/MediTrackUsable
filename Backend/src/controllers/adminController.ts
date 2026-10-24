@@ -499,8 +499,9 @@ export const getTreatments = async (req: AuthRequest, res: Response) => {
   try {
     const treatments = await prisma.treatment.findMany({
       include: {
-        doctor: { select: { name: true, email: true } },
-        patient: { select: { name: true, email: true } },
+        doctor: { select: { id: true, name: true, email: true } },
+        patient: { select: { id: true, name: true, email: true } },
+        prescriptions: true,
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -508,6 +509,29 @@ export const getTreatments = async (req: AuthRequest, res: Response) => {
     res.json(treatments);
   } catch (error) {
     console.error('Error fetching treatments:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getTreatmentById = async (req: AuthRequest, res: Response) => {
+  try {
+    const treatmentId = req.params.id as string;
+    const treatment = await prisma.treatment.findUnique({
+      where: { id: treatmentId },
+      include: {
+        doctor: { select: { id: true, name: true, email: true } },
+        patient: { select: { id: true, name: true, email: true } },
+        prescriptions: true,
+      },
+    });
+
+    if (!treatment) {
+      return res.status(404).json({ error: 'Treatment not found' });
+    }
+
+    res.json(treatment);
+  } catch (error) {
+    console.error('Error fetching treatment details:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

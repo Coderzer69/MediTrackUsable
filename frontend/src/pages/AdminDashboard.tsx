@@ -3,7 +3,7 @@ import {
   Users, Activity, ClipboardList, ShieldCheck,
   CheckCircle, XCircle, Eye, Menu, X,
   Plus, Edit2, Trash2, ShieldAlert, FileText, ScrollText,
-  Search, RefreshCw, AlertCircle
+  Search, RefreshCw, AlertCircle, Pill
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +51,26 @@ export default function AdminDashboard() {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'doctor' | 'patient'; id: string; name: string } | null>(null);
+
+  const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
+  const [selectedTreatment, setSelectedTreatment] = useState<any>(null);
+  const [treatmentModalLoading, setTreatmentModalLoading] = useState(false);
+
+  const handleOpenTreatmentDetails = async (t: any) => {
+    setSelectedTreatment(t);
+    setTreatmentModalOpen(true);
+    setTreatmentModalLoading(true);
+    try {
+      const res = await api.get(`/admin/treatments/${t.id}`);
+      if (res.data) {
+        setSelectedTreatment(res.data);
+      }
+    } catch (e) {
+      // Keep existing
+    } finally {
+      setTreatmentModalLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -761,7 +781,8 @@ export default function AdminDashboard() {
                             <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Doctor</th>
                             <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Patient</th>
                             <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Condition & Diagnosis</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-right">Status</th>
+                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
@@ -780,12 +801,21 @@ export default function AdminDashboard() {
                                 <div className="text-sm font-bold text-gray-900">{t.condition || 'General Consultation'}</div>
                                 <div className="text-xs text-gray-500 truncate max-w-xs">{t.diagnosis || 'No formal diagnosis noted'}</div>
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-right">
+                              <td className="px-4 sm:px-6 py-4">
                                 <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${
                                   t.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-700'
                                 }`}>
                                   {t.status}
                                 </span>
+                              </td>
+                              <td className="px-4 sm:px-6 py-4 text-right">
+                                <button
+                                  onClick={() => handleOpenTreatmentDetails(t)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Details
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -1120,6 +1150,140 @@ export default function AdminDashboard() {
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl disabled:opacity-50"
               >
                 {actionLoading ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL: TREATMENT PRESCRIPTIONS POPUP */}
+      {treatmentModalOpen && selectedTreatment && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative animate-in fade-in max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="flex justify-between items-start border-b border-gray-100 pb-4">
+              <div>
+                <span className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md uppercase ${
+                  selectedTreatment.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {selectedTreatment.status}
+                </span>
+                <h3 className="text-xl font-bold text-gray-900 mt-2">
+                  {selectedTreatment.condition || 'Consultation Details'}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">Recorded on {new Date(selectedTreatment.createdAt).toLocaleDateString()}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setTreatmentModalOpen(false);
+                  setSelectedTreatment(null);
+                }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Doctor and Patient info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 bg-emerald-50/70 rounded-xl border border-emerald-100">
+                <span className="text-[10px] font-bold uppercase text-emerald-800">Prescribing Doctor</span>
+                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.doctor?.name || 'Dr. Attending'}</p>
+                <p className="text-xs text-gray-500">{selectedTreatment.doctor?.email}</p>
+              </div>
+              <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100">
+                <span className="text-[10px] font-bold uppercase text-blue-800">Patient</span>
+                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.patient?.name || 'Patient'}</p>
+                <p className="text-xs text-gray-500">{selectedTreatment.patient?.email}</p>
+              </div>
+            </div>
+
+            {/* Prescriptions List */}
+            <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Pill className="w-4 h-4 text-emerald-600" />
+                  Prescriptions Given by Doctor
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                  {(selectedTreatment.prescriptions || []).length} Medicines
+                </span>
+              </div>
+
+              {treatmentModalLoading ? (
+                <div className="p-6 text-center text-xs text-gray-400">Loading prescriptions...</div>
+              ) : (selectedTreatment.prescriptions && selectedTreatment.prescriptions.length > 0) ? (
+                <div className="space-y-2.5">
+                  {selectedTreatment.prescriptions.map((p: any, idx: number) => {
+                    const medName = p.medicineName || p.medication || p.name || 'Prescription Medicine';
+                    return (
+                      <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="w-5 h-5 rounded bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-gray-900 text-sm">{medName}</span>
+                            {p.strength && (
+                              <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-medium">
+                                {p.strength}
+                              </span>
+                            )}
+                          </div>
+                          {p.dosage && (
+                            <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
+                              Dosage: {p.dosage}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 pt-1 border-t border-gray-50">
+                          {p.frequency && <p><span className="font-semibold text-gray-700">Frequency:</span> {p.frequency}</p>}
+                          {p.duration && <p><span className="font-semibold text-gray-700">Duration:</span> {p.duration}</p>}
+                          {p.instructions && (
+                            <p className="sm:col-span-2 text-gray-600 italic bg-gray-50 p-2 rounded-lg">
+                              <span className="font-semibold text-gray-700 not-italic">Instructions: </span>
+                              {p.instructions}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 italic p-4 bg-white rounded-xl border text-center">
+                  No prescriptions recorded for this consultation.
+                </p>
+              )}
+            </div>
+
+            {/* Diagnosis & Notes */}
+            {(selectedTreatment.diagnosis || selectedTreatment.doctorNotes) && (
+              <div className="space-y-3">
+                {selectedTreatment.diagnosis && (
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Diagnosis</h4>
+                    <p className="p-3 bg-gray-50 rounded-xl text-xs text-gray-800 font-medium border border-gray-100">{selectedTreatment.diagnosis}</p>
+                  </div>
+                )}
+                {selectedTreatment.doctorNotes && (
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Doctor Notes</h4>
+                    <p className="p-3 bg-gray-50 rounded-xl text-xs text-gray-700 border border-gray-100">{selectedTreatment.doctorNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setTreatmentModalOpen(false);
+                  setSelectedTreatment(null);
+                }}
+                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs rounded-xl"
+              >
+                Close
               </button>
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
   updatePatient,
   deletePatient,
   getTreatments,
+  getTreatmentById,
   getHistoryAccessRequests,
   getAuditLogs,
   getDoctorById,
@@ -44,6 +45,7 @@ router.delete('/patients/:id', deletePatient);
 
 // Treatments, Requests & Logs
 router.get('/treatments', getTreatments);
+router.get('/treatments/:id', getTreatmentById);
 router.get('/history-requests', getHistoryAccessRequests);
 router.get('/audit-logs', getAuditLogs);
 

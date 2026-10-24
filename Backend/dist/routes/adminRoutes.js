@@ -23,6 +23,7 @@ router.patch('/patients/:id', adminController_1.updatePatient);
 router.delete('/patients/:id', adminController_1.deletePatient);
 // Treatments, Requests & Logs
 router.get('/treatments', adminController_1.getTreatments);
+router.get('/treatments/:id', adminController_1.getTreatmentById);
 router.get('/history-requests', adminController_1.getHistoryAccessRequests);
 router.get('/audit-logs', adminController_1.getAuditLogs);
 exports.default = router;

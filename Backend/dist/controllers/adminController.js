@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateAdminProfile = exports.getDoctorById = exports.getAuditLogs = exports.getHistoryAccessRequests = exports.getTreatments = exports.deletePatient = exports.updatePatient = exports.createPatient = exports.getPatients = exports.getDashboardStats = exports.verifyDoctor = exports.deleteDoctor = exports.updateDoctor = exports.createDoctor = exports.getDoctors = void 0;
+exports.updateAdminProfile = exports.getDoctorById = exports.getAuditLogs = exports.getHistoryAccessRequests = exports.getTreatmentById = exports.getTreatments = exports.deletePatient = exports.updatePatient = exports.createPatient = exports.getPatients = exports.getDashboardStats = exports.verifyDoctor = exports.deleteDoctor = exports.updateDoctor = exports.createDoctor = exports.getDoctors = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const client_1 = require("@prisma/client");
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -463,8 +463,9 @@ const getTreatments = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     try {
         const treatments = yield prisma_1.default.treatment.findMany({
             include: {
-                doctor: { select: { name: true, email: true } },
-                patient: { select: { name: true, email: true } },
+                doctor: { select: { id: true, name: true, email: true } },
+                patient: { select: { id: true, name: true, email: true } },
+                prescriptions: true,
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -476,6 +477,28 @@ const getTreatments = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.getTreatments = getTreatments;
+const getTreatmentById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const treatmentId = req.params.id;
+        const treatment = yield prisma_1.default.treatment.findUnique({
+            where: { id: treatmentId },
+            include: {
+                doctor: { select: { id: true, name: true, email: true } },
+                patient: { select: { id: true, name: true, email: true } },
+                prescriptions: true,
+            },
+        });
+        if (!treatment) {
+            return res.status(404).json({ error: 'Treatment not found' });
+        }
+        res.json(treatment);
+    }
+    catch (error) {
+        console.error('Error fetching treatment details:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getTreatmentById = getTreatmentById;
 const getHistoryAccessRequests = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const requests = yield prisma_1.default.historyAccessRequest.findMany({
