@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell, User, Settings, Users, PlusCircle,
   Clock, ScanLine, Check, ArrowRight, Home,
-  FileCheck, UserCheck, FileEdit, Shield, LogOut, Menu, X
+  FileCheck, UserCheck, FileEdit, Shield, LogOut, Menu, X,
+  Loader2, AlertCircle, RefreshCw
 } from 'lucide-react';
 import NewTreatment from '../components/NewTreatment';
 import DoctorMedicalHistory from '../components/DoctorMedicalHistory';
@@ -21,22 +22,30 @@ export default function DoctorDashboard() {
   const [activePatient, setActivePatient] = useState<any>(null);
   const [patients, setPatients] = useState<any[]>([]);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
+  const [treatments, setTreatments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const fetchDashboardData = async () => {
     try {
+      setLoading(true);
+      setError('');
       const [patientsRes, requestsRes, treatmentsRes] = await Promise.all([
         api.get('/doctor/patients'),
         api.get('/doctor/access-requests'),
-        api.get('/doctor/treatments').catch(() => ({ data: [] }))
+        api.get('/doctor/treatments')
       ]);
       setPatients(patientsRes.data);
       setAccessRequests(requestsRes.data);
       setTreatments(treatmentsRes.data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch dashboard data', err);
+      setError(err.response?.data?.error || 'Failed to load doctor dashboard data. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -45,10 +54,6 @@ export default function DoctorDashboard() {
       fetchDashboardData();
     }
   }, [activeTab, user?.verificationStatus]);
-
-
-
-  const [treatments, setTreatments] = useState<any[]>([]);
   const pendingRequests = accessRequests.filter(r => r.status === 'PENDING');
   const approvedHistoryRequests = accessRequests.filter(
     (request) =>
@@ -260,7 +265,28 @@ export default function DoctorDashboard() {
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto">
           <div className="max-w-[1100px] mx-auto">
 
-            {activeTab === 'new-treatment' ? (
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between gap-3 text-sm text-red-700 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                  <span>{error}</span>
+                </div>
+                <button
+                  onClick={fetchDashboardData}
+                  className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {loading && patients.length === 0 && treatments.length === 0 ? (
+              <div className="py-24 text-center text-gray-500 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-[#0b5c46]" />
+                <p className="text-sm font-medium">Loading clinical records...</p>
+              </div>
+            ) : activeTab === 'new-treatment' ? (
               activePatient ? (
                 <NewTreatment
                   patient={activePatient}
@@ -346,6 +372,14 @@ export default function DoctorDashboard() {
               <DoctorPatients 
                 patients={patients} 
                 onAddPatient={() => setShowScanner(true)}
+                onSelectPatient={(p) => {
+                  setActivePatient(p);
+                  setActiveTab('new-treatment');
+                }}
+                onRequestHistoryAccess={() => {
+                  fetchDashboardData();
+                  setActiveTab('history-requests');
+                }}
               />
             ) : (
               <>

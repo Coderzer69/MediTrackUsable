@@ -1,16 +1,48 @@
 import { useState } from 'react';
 import {
   Users, Calendar, UserPlus, Clock,
-  Search, Filter, Plus, ChevronLeft, ChevronRight
+  Search, Filter, Plus, ChevronLeft, ChevronRight,
+  X, CheckCircle, AlertCircle, FilePlus, ShieldAlert, Loader2
 } from 'lucide-react';
+import api from '../lib/api';
 
 interface DoctorPatientsProps {
   patients: any[];
   onAddPatient?: () => void;
+  onSelectPatient?: (patient: any) => void;
+  onRequestHistoryAccess?: (patient: any) => void;
 }
 
-export default function DoctorPatients({ patients, onAddPatient }: DoctorPatientsProps) {
+export default function DoctorPatients({ 
+  patients, 
+  onAddPatient,
+  onSelectPatient,
+  onRequestHistoryAccess 
+}: DoctorPatientsProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestMsg, setRequestMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const handleSendHistoryRequest = async (patientId: string) => {
+    setRequestLoading(true);
+    setRequestMsg(null);
+    try {
+      await api.post('/doctor/access-requests', { patientId });
+      setRequestMsg({ text: 'Access request successfully sent to the patient.' });
+      if (onRequestHistoryAccess && selectedPatient) {
+        onRequestHistoryAccess(selectedPatient);
+      }
+    } catch (err: any) {
+      console.error('Failed to send history request', err);
+      setRequestMsg({ 
+        text: err.response?.data?.error || 'Failed to submit history access request.', 
+        error: true 
+      });
+    } finally {
+      setRequestLoading(false);
+    }
+  };
 
   const filteredPatients = patients.filter(p =>
     p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -171,7 +203,13 @@ export default function DoctorPatients({ patients, onAddPatient }: DoctorPatient
                       {patient.treatmentsCount || 0}
                     </td>
                     <td className="px-6 py-4">
-                      <button className="text-[13px] font-bold text-[#0b5c46] hover:text-[#084836] hover:underline">
+                      <button 
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setRequestMsg(null);
+                        }}
+                        className="text-[13px] font-bold text-[#0b5c46] hover:text-[#084836] hover:underline"
+                      >
                         View Details
                       </button>
                     </td>
@@ -200,6 +238,88 @@ export default function DoctorPatients({ patients, onAddPatient }: DoctorPatient
           </div>
         </div>
       </div>
+
+      {/* Patient Details Modal */}
+      {selectedPatient && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-gray-100 space-y-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 text-[#0b5c46] flex items-center justify-center font-bold text-lg uppercase">
+                  {selectedPatient.name?.substring(0, 2) || 'PT'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{selectedPatient.name}</h3>
+                  <p className="text-xs text-gray-500">Patient ID: {selectedPatient.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedPatient(null);
+                  setRequestMsg(null);
+                }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {requestMsg && (
+              <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                requestMsg.error ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              }`}>
+                {requestMsg.error ? <AlertCircle className="w-4 h-4 shrink-0" /> : <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />}
+                <span>{requestMsg.text}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase">Contact Phone</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{selectedPatient.phone || 'Not recorded'}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase">Email Address</span>
+                <p className="font-semibold text-gray-900 mt-0.5 truncate">{selectedPatient.email || 'Not recorded'}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase">Total Consultations</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{selectedPatient.treatmentsCount || 0}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase">Last Consultation</span>
+                <p className="font-semibold text-gray-900 mt-0.5">
+                  {selectedPatient.lastVisit ? new Date(selectedPatient.lastVisit).toLocaleDateString() : 'None yet'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-3">
+              {onSelectPatient && (
+                <button
+                  onClick={() => {
+                    const pt = selectedPatient;
+                    setSelectedPatient(null);
+                    onSelectPatient(pt);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#0b5c46] hover:bg-[#094d3a] text-white font-bold text-sm rounded-xl transition-colors shadow-sm"
+                >
+                  <FilePlus className="w-4 h-4" />
+                  New Treatment
+                </button>
+              )}
+              <button
+                onClick={() => handleSendHistoryRequest(selectedPatient.id)}
+                disabled={requestLoading}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-[#0b5c46] text-[#0b5c46] hover:bg-emerald-50 font-bold text-sm rounded-xl transition-colors disabled:opacity-50"
+              >
+                {requestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldAlert className="w-4 h-4" />}
+                Request History Access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

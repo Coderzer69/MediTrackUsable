@@ -289,6 +289,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     });
     const totalPatients = await prisma.patientProfile.count();
     const totalTreatments = await prisma.treatment.count();
+    const totalRequests = await prisma.historyAccessRequest.count();
     const pendingRequests = await prisma.historyAccessRequest.count({
       where: { status: 'PENDING' }
     });
@@ -299,6 +300,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       pendingDoctors,
       totalPatients,
       totalTreatments,
+      totalRequests,
       pendingRequests,
     });
   } catch (error) {

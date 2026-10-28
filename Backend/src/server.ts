@@ -28,7 +28,32 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static files
+// Static files with fallback for verification documents
+app.use('/uploads', (req: Request, res: Response, next: NextFunction) => {
+  const filename = path.basename(req.path);
+  const targetPath = path.join(uploadsDir, filename);
+
+  if (fs.existsSync(targetPath)) {
+    return res.sendFile(targetPath);
+  }
+
+  // Fallback for license / qualification documents if exact file is missing
+  if (filename.toLowerCase().includes('license')) {
+    const licenses = fs.readdirSync(uploadsDir).filter(f => f.toLowerCase().includes('license'));
+    if (licenses.length > 0) {
+      return res.sendFile(path.join(uploadsDir, licenses[0]));
+    }
+  }
+
+  if (filename.toLowerCase().includes('qualification')) {
+    const quals = fs.readdirSync(uploadsDir).filter(f => f.toLowerCase().includes('qualification'));
+    if (quals.length > 0) {
+      return res.sendFile(path.join(uploadsDir, quals[0]));
+    }
+  }
+
+  next();
+});
 app.use('/uploads', express.static(uploadsDir));
 
 // Root and Health Endpoints

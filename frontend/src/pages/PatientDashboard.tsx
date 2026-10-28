@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Home, ClipboardList, Lock, UserCog, Headphones, 
-  Bell, Copy, CalendarDays, ArrowRight, Menu, X
+  Bell, Copy, CalendarDays, ArrowRight, Menu, X,
+  Loader2, AlertCircle, RefreshCw
 } from 'lucide-react';
 import TreatmentDetails from '../components/TreatmentDetails';
 import ProfileSettings from '../components/ProfileSettings';
@@ -22,8 +23,13 @@ export default function PatientDashboard() {
   const [treatments, setTreatments] = useState<any[]>([]);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   const fetchDashboardData = async () => {
     try {
+      setLoading(true);
+      setError('');
       const [treatmentsRes, requestsRes, profileRes] = await Promise.all([
         api.get('/patient/treatments'),
         api.get('/patient/access-requests'),
@@ -32,8 +38,11 @@ export default function PatientDashboard() {
       setTreatments(treatmentsRes.data);
       setAccessRequests(requestsRes.data);
       setProfile(profileRes.data);
-    } catch (err) {
-      console.error('Failed to fetch dashboard data', err);
+    } catch (err: any) {
+      console.error('Failed to fetch patient dashboard data', err);
+      setError(err.response?.data?.error || 'Failed to load your medical records. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -210,6 +219,29 @@ export default function PatientDashboard() {
           ) : (
             <div className="max-w-[1000px] mx-auto">
             
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between gap-3 text-sm text-red-700 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                  <span>{error}</span>
+                </div>
+                <button
+                  onClick={fetchDashboardData}
+                  className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {loading && !profile && treatments.length === 0 ? (
+              <div className="py-24 text-center text-gray-500 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-[#0b5c46]" />
+                <p className="text-sm font-medium">Loading health overview...</p>
+              </div>
+            ) : (
+              <>
             {/* Header */}
             <header className="flex justify-between items-start mb-6 sm:mb-8">
               <div>
@@ -363,13 +395,17 @@ export default function PatientDashboard() {
                   )}
                 </div>
 
-                <Link to="#" className="mt-6 flex items-center gap-1.5 text-[14px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors">
+                <button 
+                  onClick={() => setActiveTab('records')}
+                  className="mt-6 flex items-center gap-1.5 text-[14px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors text-left"
+                >
                   View All Medicines <ArrowRight className="w-4 h-4" />
-                </Link>
+                </button>
               </div>
               
             </div>
-            
+            </>
+            )}
             </div>
           )}
         </main>

@@ -3,7 +3,7 @@ import {
   Users, Activity, ClipboardList, ShieldCheck,
   CheckCircle, XCircle, Eye, Menu, X,
   Plus, Edit2, Trash2, ShieldAlert, FileText, ScrollText,
-  Search, RefreshCw, AlertCircle, Pill
+  Search, RefreshCw, AlertCircle, Pill, Stethoscope, FileCheck, Clock
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -77,8 +77,14 @@ export default function AdminDashboard() {
     setErrorBanner('');
     try {
       if (activeTab === 'dashboard') {
-        const res = await api.get('/admin/dashboard-stats');
-        setStats(res.data);
+        const [statsRes, doctorsRes, treatmentsRes] = await Promise.all([
+          api.get('/admin/dashboard-stats'),
+          api.get('/admin/doctors').catch(() => ({ data: [] })),
+          api.get('/admin/treatments').catch(() => ({ data: [] }))
+        ]);
+        setStats(statsRes.data);
+        if (Array.isArray(doctorsRes.data)) setDoctors(doctorsRes.data);
+        if (Array.isArray(treatmentsRes.data)) setTreatments(treatmentsRes.data);
       } else if (activeTab === 'doctors') {
         const res = await api.get('/admin/doctors');
         setDoctors(res.data);
@@ -453,38 +459,141 @@ export default function AdminDashboard() {
                     <p>Loading system statistics...</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-                    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                      <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Doctors</p>
-                      <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalDoctors || 0}</h3>
-                      <p className="text-[12px] text-emerald-600 font-medium mt-1">{stats?.approvedDoctors || 0} Verified</p>
+                  <>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Doctors</p>
+                        <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalDoctors || 0}</h3>
+                        <p className="text-[12px] text-emerald-600 font-medium mt-1">{stats?.approvedDoctors || 0} Verified</p>
+                      </div>
+                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Pending Verifications</p>
+                        <h3 className="text-2xl sm:text-3xl font-extrabold text-orange-600">{stats?.pendingDoctors || 0}</h3>
+                        <button
+                          onClick={() => handleTabChange('doctors')}
+                          className="text-[12px] font-bold text-orange-600 hover:underline mt-1 block"
+                        >
+                          Review applications →
+                        </button>
+                      </div>
+                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Patients</p>
+                        <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalPatients || 0}</h3>
+                        <p className="text-[12px] text-gray-400 font-medium mt-1">Unique QR Identifiers</p>
+                      </div>
+                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Treatments</p>
+                        <h3 className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{stats?.totalTreatments || 0}</h3>
+                        <button
+                          onClick={() => handleTabChange('treatments')}
+                          className="text-[12px] font-bold text-emerald-700 hover:underline mt-1 block"
+                        >
+                          View all records →
+                        </button>
+                      </div>
                     </div>
-                    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                      <p className="text-[13px] font-semibold text-gray-500 mb-1">Pending Verifications</p>
-                      <h3 className="text-2xl sm:text-3xl font-extrabold text-orange-600">{stats?.pendingDoctors || 0}</h3>
-                      <button
-                        onClick={() => handleTabChange('doctors')}
-                        className="text-[12px] font-bold text-orange-600 hover:underline mt-1 block"
-                      >
-                        Review applications →
-                      </button>
+
+                    {/* Quick Activity Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                      {/* Pending Applications */}
+                      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                              <Stethoscope className="w-5 h-5 text-orange-500" />
+                              Pending Doctor Applications
+                            </h3>
+                            <button
+                              onClick={() => handleTabChange('doctors')}
+                              className="text-xs font-bold text-emerald-700 hover:underline"
+                            >
+                              Manage all →
+                            </button>
+                          </div>
+
+                          {doctors.filter((d: any) => d.verificationStatus === 'PENDING').length === 0 ? (
+                            <div className="py-8 text-center text-sm text-gray-400">
+                              <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                              All doctors are verified! No pending applications.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {doctors
+                                .filter((d: any) => d.verificationStatus === 'PENDING')
+                                .slice(0, 4)
+                                .map((doc: any) => (
+                                  <div key={doc.id} className="p-3.5 bg-gray-50/70 border border-gray-100 rounded-xl flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-bold text-gray-900 truncate">{doc.name}</p>
+                                      <p className="text-xs text-gray-500">{doc.specialization || 'General Practitioner'} • Lic: {doc.licenseNumber || 'N/A'}</p>
+                                    </div>
+                                    <button
+                                      onClick={() => handleTabChange('doctors')}
+                                      className="px-3 py-1.5 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
+                                    >
+                                      Review
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Recent Treatments */}
+                      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                              <FileCheck className="w-5 h-5 text-emerald-600" />
+                              Recent Treatment Consultations
+                            </h3>
+                            <button
+                              onClick={() => handleTabChange('treatments')}
+                              className="text-xs font-bold text-emerald-700 hover:underline"
+                            >
+                              View all →
+                            </button>
+                          </div>
+
+                          {treatments.length === 0 ? (
+                            <div className="py-8 text-center text-sm text-gray-400">
+                              <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                              No consultation records logged yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {treatments.slice(0, 4).map((t: any) => (
+                                <div key={t.id} className="p-3.5 bg-gray-50/70 border border-gray-100 rounded-xl flex items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-bold text-gray-900 truncate">
+                                        {t.condition || t.diagnosis || 'Clinical Consultation'}
+                                      </span>
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                        t.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
+                                      }`}>
+                                        {t.status}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      Patient: {t.patient?.name || 'Unknown'} • Dr: {t.doctor?.name || 'Unknown'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleOpenTreatmentDetails(t)}
+                                    className="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+                                  >
+                                    Details
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                      <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Patients</p>
-                      <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalPatients || 0}</h3>
-                      <p className="text-[12px] text-gray-400 font-medium mt-1">Unique QR Identifiers</p>
-                    </div>
-                    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                      <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Treatments</p>
-                      <h3 className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{stats?.totalTreatments || 0}</h3>
-                      <button
-                        onClick={() => handleTabChange('treatments')}
-                        className="text-[12px] font-bold text-emerald-700 hover:underline mt-1 block"
-                      >
-                        View all records →
-                      </button>
-                    </div>
-                  </div>
+                  </>
                 )}
               </>
             )}
@@ -573,15 +682,29 @@ export default function AdminDashboard() {
                                 <div className="flex items-center justify-center gap-2">
                                   {doc.verificationDocumentUrl ? (
                                     <a
-                                      href={`${BACKEND_URL}/uploads/${doc.verificationDocumentUrl}`}
+                                      href={`${BACKEND_URL}/uploads/${doc.verificationDocumentUrl.replace(/^\/?(uploads\/)?/, '')}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                      title="View License File"
+                                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-semibold"
+                                      title="View Medical License Document"
                                     >
                                       <Eye className="w-4 h-4" />
+                                      License
                                     </a>
-                                  ) : (
+                                  ) : null}
+                                  {doc.qualificationDocumentUrl ? (
+                                    <a
+                                      href={`${BACKEND_URL}/uploads/${doc.qualificationDocumentUrl.replace(/^\/?(uploads\/)?/, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-semibold"
+                                      title="View Qualification Certificate"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                      Qualification
+                                    </a>
+                                  ) : null}
+                                  {!doc.verificationDocumentUrl && !doc.qualificationDocumentUrl && (
                                     <span className="text-xs text-gray-400">None</span>
                                   )}
                                 </div>
@@ -1186,12 +1309,12 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 bg-emerald-50/70 rounded-xl border border-emerald-100">
                 <span className="text-[10px] font-bold uppercase text-emerald-800">Prescribing Doctor</span>
-                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.doctor?.name || 'Dr. Attending'}</p>
+                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.doctor?.name || 'Unknown Doctor'}</p>
                 <p className="text-xs text-gray-500">{selectedTreatment.doctor?.email}</p>
               </div>
               <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100">
                 <span className="text-[10px] font-bold uppercase text-blue-800">Patient</span>
-                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.patient?.name || 'Patient'}</p>
+                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.patient?.name || 'Unknown Patient'}</p>
                 <p className="text-xs text-gray-500">{selectedTreatment.patient?.email}</p>
               </div>
             </div>
@@ -1213,7 +1336,7 @@ export default function AdminDashboard() {
               ) : (selectedTreatment.prescriptions && selectedTreatment.prescriptions.length > 0) ? (
                 <div className="space-y-2.5">
                   {selectedTreatment.prescriptions.map((p: any, idx: number) => {
-                    const medName = p.medicineName || p.medication || p.name || 'Prescription Medicine';
+                    const medName = p.medicineName || p.medication || p.name || 'Unnamed Medicine';
                     return (
                       <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
