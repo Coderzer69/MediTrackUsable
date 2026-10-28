@@ -1,0 +1,11 @@
+
+# Local environment secrets
+**/.env
+!**/.env.example
+
+# Nested Git metadata backups
+**/.git-backup/
+
+**/.env
+!**/.env.example
+**/.git-backup/
