@@ -269,6 +269,7 @@ const getDashboardStats = (req, res) => __awaiter(void 0, void 0, void 0, functi
         });
         const totalPatients = yield prisma_1.default.patientProfile.count();
         const totalTreatments = yield prisma_1.default.treatment.count();
+        const totalRequests = yield prisma_1.default.historyAccessRequest.count();
         const pendingRequests = yield prisma_1.default.historyAccessRequest.count({
             where: { status: 'PENDING' }
         });
@@ -278,6 +279,7 @@ const getDashboardStats = (req, res) => __awaiter(void 0, void 0, void 0, functi
             pendingDoctors,
             totalPatients,
             totalTreatments,
+            totalRequests,
             pendingRequests,
         });
     }

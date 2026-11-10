@@ -342,21 +342,24 @@ export default function PatientSignup() {
                       navigate('/admin/dashboard');
                     }
                   } else {
-                    alert(data.error || 'Login failed');
+                    setError(data.error || 'Google registration failed');
                   }
                 } catch (error) {
                   console.error('Error during Google login', error);
-                  alert('An error occurred during Google login.');
+                  setError('An error occurred during Google registration.');
                 }
               }}
               onError={() => {
-                console.log('Google Login Failed');
-                alert('Google Login Failed');
+                setError('Google Sign-In is unavailable because the Google OAuth Client has been deleted or deactivated in Google Cloud. Please use the registration form above to create your account.');
               }}
               shape="rectangular"
               size="large"
               logo_alignment="center"
             />
+          </div>
+
+          <div className="mt-4 text-center text-[13px] text-gray-500 font-medium">
+            Already have a patient account? <Link to="/login" className="text-emerald-700 hover:text-emerald-800 font-bold">Log in here</Link>
           </div>
 
           {/* Trust text */}

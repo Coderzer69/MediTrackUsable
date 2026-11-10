@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import api, { API_URL } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -17,6 +18,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfoMessage('');
     setLoading(true);
     try {
       const res = await api.post('/auth/login', { email, password });
@@ -25,15 +27,22 @@ export default function LoginPage() {
       if (res.data.user.role === 'DOCTOR') {
         navigate('/doctor/dashboard');
       } else if (res.data.user.role === 'ADMIN') {
-        navigate('/admin/dashboard'); // Or however admin route is configured
+        navigate('/admin/dashboard');
       } else {
         navigate('/patient/dashboard');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed');
+      setError(err.response?.data?.error || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fillAccount = (fillEmail: string, fillPass: string = 'password123') => {
+    setEmail(fillEmail);
+    setPassword(fillPass);
+    setError('');
+    setInfoMessage(`Filled ${fillEmail}. Click "Log In" to proceed.`);
   };
 
   return (
@@ -79,18 +88,62 @@ export default function LoginPage() {
 
       {/* Right Column - Login Form */}
       <div className="flex-1 flex items-center justify-center p-6 relative">
-        <div className="w-full max-w-[460px] bg-white rounded-2xl p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative z-10">
+        <div className="w-full max-w-[480px] bg-white rounded-2xl p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative z-10">
           
           {/* Form Header */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-6">
             <h2 className="text-2xl sm:text-[26px] font-extrabold text-gray-900 mb-2 flex items-center justify-center gap-2">
               Welcome back <span>👋</span>
             </h2>
             <p className="text-gray-500 text-sm font-medium">Log in to your MediTrack account</p>
           </div>
 
+          {/* Quick Demo Accounts Selection */}
+          <div className="mb-6 p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-xl">
+            <div className="text-[12px] font-bold text-emerald-900 mb-2 flex items-center gap-1.5">
+              <UserCheck className="w-4 h-4 text-emerald-700" />
+              <span>Quick Demo Accounts (Click to Fill):</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => fillAccount('urvishbhardwaj7@gmail.com')}
+                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
+              >
+                <span className="font-bold">Dr. Urvish</span>
+                <span className="text-[10px] text-gray-500">Doctor</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fillAccount('admin@meditrack.com')}
+                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
+              >
+                <span className="font-bold">Super Admin</span>
+                <span className="text-[10px] text-gray-500">Admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fillAccount('patient@meditrack.com')}
+                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
+              >
+                <span className="font-bold">Patient</span>
+                <span className="text-[10px] text-gray-500">Alex</span>
+              </button>
+            </div>
+          </div>
+
           <form className="flex flex-col gap-5" onSubmit={handleLogin}>
-            {error && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium leading-relaxed">
+                {error}
+              </div>
+            )}
+            {infoMessage && (
+              <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium leading-relaxed">
+                {infoMessage}
+              </div>
+            )}
+
             {/* Email Field */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[13px] font-bold text-gray-800">Email</label>
@@ -111,7 +164,13 @@ export default function LoginPage() {
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center">
                 <label className="text-[13px] font-bold text-gray-800">Password</label>
-                <Link to="#" className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800">Forgot password?</Link>
+                <button 
+                  type="button"
+                  onClick={() => setInfoMessage('Default testing password for all accounts is "password123". For other accounts, contact admin@meditrack.com.')}
+                  className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800"
+                >
+                  Forgot password?
+                </button>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-400" />
@@ -141,16 +200,16 @@ export default function LoginPage() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-[#0b3b2c] hover:bg-[#082a1f] text-white py-3 rounded-xl font-bold text-[15px] transition-colors mt-2 disabled:opacity-70"
+              className="w-full bg-[#0b3b2c] hover:bg-[#082a1f] text-white py-3.5 rounded-xl font-bold text-[15px] transition-colors mt-2 disabled:opacity-70 shadow-sm"
             >
               {loading ? 'Logging in...' : 'Log In'}
             </button>
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 my-7">
+          <div className="flex items-center gap-3 my-6">
             <div className="h-px bg-gray-100 flex-1"></div>
-            <span className="text-[12px] text-gray-400 font-medium">or</span>
+            <span className="text-[12px] text-gray-400 font-medium uppercase tracking-wider">or sign in with</span>
             <div className="h-px bg-gray-100 flex-1"></div>
           </div>
 
@@ -180,16 +239,15 @@ export default function LoginPage() {
                         navigate('/patient/dashboard');
                       }
                     } else {
-                      alert(data.error || 'Login failed');
+                      setError(data.error || 'Google login failed');
                     }
-                  } catch (error) {
-                    console.error('Error during Google login', error);
-                    alert('An error occurred during Google login.');
+                  } catch (err) {
+                    console.error('Error during Google login', err);
+                    setError('An error occurred during Google login.');
                   }
                 }}
                 onError={() => {
-                  console.log('Google Login Failed');
-                  alert('Google Login Failed');
+                  setError('Google OAuth Client is deleted or inactive in Google Cloud. Please use Email & Password above to log in.');
                 }}
                 shape="rectangular"
                 size="large"

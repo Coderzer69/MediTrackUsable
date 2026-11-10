@@ -279,10 +279,19 @@ const requestHistoryAccess = (req, res) => __awaiter(void 0, void 0, void 0, fun
     try {
         const doctorId = req.user.id;
         const { patientId } = req.body;
+        if (!patientId) {
+            return res.status(400).json({ error: 'Patient ID is required' });
+        }
         if (!(yield isDoctorVerified(doctorId))) {
             return res.status(403).json({ error: 'Only verified doctors can request history access' });
         }
-        // Check if an active request already exists
+        const patientExists = yield prisma_1.default.user.findFirst({
+            where: { id: patientId, role: 'PATIENT' },
+        });
+        if (!patientExists) {
+            return res.status(404).json({ error: 'Patient not found' });
+        }
+        // Check if an active approved request already exists
         const existing = yield prisma_1.default.historyAccessRequest.findFirst({
             where: {
                 doctorId,
@@ -293,6 +302,17 @@ const requestHistoryAccess = (req, res) => __awaiter(void 0, void 0, void 0, fun
         });
         if (existing) {
             return res.status(400).json({ error: 'You already have active access to this patient\'s history' });
+        }
+        // Check if a pending request already exists
+        const pending = yield prisma_1.default.historyAccessRequest.findFirst({
+            where: {
+                doctorId,
+                patientId,
+                status: 'PENDING',
+            },
+        });
+        if (pending) {
+            return res.status(400).json({ error: 'An access request for this patient is already pending' });
         }
         const request = yield prisma_1.default.historyAccessRequest.create({
             data: {

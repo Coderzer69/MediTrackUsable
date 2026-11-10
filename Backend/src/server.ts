@@ -92,9 +92,20 @@ app.use((req: Request, res: Response) => {
 // Global error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('Unhandled server error:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
   res.status(err.status || 500).json({
     error: err.message || 'Internal Server Error',
   });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
 });
 
 const server = app.listen(port, () => {

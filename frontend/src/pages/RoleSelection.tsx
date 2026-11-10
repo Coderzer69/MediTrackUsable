@@ -64,6 +64,14 @@ export default function RoleSelection() {
             </div>
           </Link>
         </div>
+
+        {/* Existing user login link */}
+        <div className="mt-8 text-center text-[14px] text-gray-500 font-medium">
+          Already have an account?{' '}
+          <Link to="/login" className="text-emerald-700 hover:text-emerald-800 font-bold hover:underline">
+            Log in here
+          </Link>
+        </div>
       </div>
     </div>
   );
