@@ -19,9 +19,24 @@ export type PatientLanguage = keyof typeof PATIENT_LANGUAGES;
 export const isPatientLanguage = (value: unknown): value is PatientLanguage =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(PATIENT_LANGUAGES, value);
 
-// Accepts "hi", "hi-IN", "HI" etc. Falls back to English.
+// ISO 639-3 codes (as returned by ElevenLabs Scribe) for our languages.
+const ISO3: Record<string, PatientLanguage> = {
+  eng: 'en', hin: 'hi', ben: 'bn', mar: 'mr', tam: 'ta', tel: 'te',
+  guj: 'gu', kan: 'kn', mal: 'ml', pan: 'pa', urd: 'ur',
+};
+
+// Accepts "hi", "hi-IN", "HI", "hin" etc. Falls back to English.
 export const normalizeLanguage = (value: unknown): PatientLanguage => {
   if (typeof value !== 'string') return 'en';
   const code = value.trim().toLowerCase().split(/[-_]/)[0];
-  return isPatientLanguage(code) ? code : 'en';
+  if (isPatientLanguage(code)) return code;
+  return ISO3[code] || 'en';
+};
+
+// Two-letter code for a detected language, or the raw code if it isn't one of ours.
+export const toShortLanguageCode = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const code = value.trim().toLowerCase().split(/[-_]/)[0];
+  if (isPatientLanguage(code)) return code;
+  return ISO3[code] || code;
 };

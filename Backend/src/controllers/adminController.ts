@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { deleteStoredFilesForUser } from '../utils/fileStore';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { DoctorVerificationStatus } from '@prisma/client';
 
@@ -200,6 +201,7 @@ export const deleteDoctor = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Doctor profile not found' });
     }
 
+    await deleteStoredFilesForUser(targetProfile.userId);
     await prisma.user.delete({
       where: { id: targetProfile.userId },
     });
@@ -482,6 +484,7 @@ export const deletePatient = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
+    await deleteStoredFilesForUser(targetUser.id);
     await prisma.user.delete({
       where: { id: targetUser.id },
     });

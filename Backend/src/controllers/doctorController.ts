@@ -11,7 +11,7 @@ import { sendDocumentFile, toDocumentDto } from '../utils/medicalDocuments';
 import { deliverPrescriptionToPatient, toTranslationDto } from '../utils/prescriptionDelivery';
 import { isElevenLabsConfigured, speechToText } from '../utils/elevenlabs';
 import { isEmailConfigured } from '../utils/emailService';
-import { PATIENT_LANGUAGES, isPatientLanguage } from '../utils/languages';
+import { PATIENT_LANGUAGES, isPatientLanguage, toShortLanguageCode } from '../utils/languages';
 import { getStoredFile } from '../utils/fileStore';
 
 // ADMIN is a superuser: full access to every doctor route and all underlying data.
@@ -659,7 +659,7 @@ export const draftFromAudio = async (req: AuthRequest, res: Response) => {
         if (!result.text) {
           return res.status(422).json({ error: 'No speech was detected in the recording. Please try again closer to the microphone.' });
         }
-        transcript = { text: result.text, languageCode: result.languageCode };
+        transcript = { text: result.text, languageCode: toShortLanguageCode(result.languageCode) };
         text = result.text;
         audioForModel = undefined;
       } catch (sttErr: any) {
