@@ -68,3 +68,10 @@ The whole monorepo deploys from `render.yaml` (Render Blueprint), branch `main`:
   the patient gets the prescription by email through Brevo. Needs `BREVO_API_KEY` and
   `EMAIL_FROM_ADDRESS` (a sender verified in Brevo); optional `EMAIL_FROM_NAME`, `APP_URL`.
   Results are recorded in the audit log as `PRESCRIPTION_EMAIL_SENT` / `PRESCRIPTION_EMAIL_FAILED`.
+- Patient language: each patient picks a prescription language (Profile → Personal Information;
+  defaults to the app language at sign-up). On confirm, the prescription is translated with Gemini
+  (medicine names and strengths always stay in English), voiced with ElevenLabs (`eleven_v4`),
+  stored privately (`TreatmentTranslation` + `StoredFile`), shown in the patient's treatment view
+  with a play button, and emailed in that language. The doctor can override the language per consultation.
+- Doctor dictation: with `ELEVENLABS_API_KEY` set, the mic records audio and ElevenLabs Scribe
+  (`scribe_v2_medical`) transcribes it in any language; Gemini then fills the form in English.

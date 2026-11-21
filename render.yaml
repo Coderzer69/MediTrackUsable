@@ -40,6 +40,9 @@ services:
         sync: false
       # Prescription emails (Brevo). BREVO_API_KEY and EMAIL_FROM_ADDRESS are
       # set on the service in the Render dashboard (kept out of this file).
+      # ElevenLabs (doctor dictation + patient voice): ELEVENLABS_API_KEY is also
+      # set in the dashboard. Optional: ELEVENLABS_STT_MODEL, ELEVENLABS_TTS_MODEL,
+      # ELEVENLABS_VOICE_ID.
       - key: EMAIL_FROM_NAME
         value: MediTrack
       - key: APP_URL
