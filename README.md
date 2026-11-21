@@ -64,3 +64,7 @@ The whole monorepo deploys from `render.yaml` (Render Blueprint), branch `main`:
 - Google sign-in: add the deployed frontend URL to the OAuth client's
   "Authorized JavaScript origins" in Google Cloud Console.
 - `GET /health` = liveness, `GET /health/db` = database check.
+- Prescription emails: when a doctor confirms a treatment (or amends a confirmed one),
+  the patient gets the prescription by email through Brevo. Needs `BREVO_API_KEY` and
+  `EMAIL_FROM_ADDRESS` (a sender verified in Brevo); optional `EMAIL_FROM_NAME`, `APP_URL`.
+  Results are recorded in the audit log as `PRESCRIPTION_EMAIL_SENT` / `PRESCRIPTION_EMAIL_FAILED`.

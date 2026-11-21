@@ -8,6 +8,7 @@ import { TreatmentStatus } from '@prisma/client';
 import OpenAI from 'openai';
 import { logAudit } from '../utils/auditLogger';
 import { sendDocumentFile, toDocumentDto } from '../utils/medicalDocuments';
+import { sendPrescriptionEmail } from '../utils/emailService';
 
 // ADMIN is a superuser: full access to every doctor route and all underlying data.
 const isAdminRequest = (req: AuthRequest) => req.user?.role === 'ADMIN';
@@ -763,6 +764,55 @@ ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
   }
 };
 
+// Emails the patient their prescription (Brevo). Runs in the background so a slow
+// or failing email never blocks or breaks saving the treatment. Only the outcome
+// is logged, never the medical content.
+const notifyPatientOfPrescription = (
+  req: AuthRequest,
+  treatmentId: string,
+  options: { isUpdate?: boolean; amendmentReason?: string | null } = {},
+) => {
+  const actorId = req.user!.id;
+  void (async () => {
+    try {
+      const treatment = await prisma.treatment.findUnique({
+        where: { id: treatmentId },
+        include: {
+          prescriptions: { orderBy: { createdAt: 'asc' } },
+          patient: { select: { id: true, name: true, email: true } },
+          doctor: { select: { name: true, doctorProfile: { select: { specialization: true } } } },
+        },
+      });
+      if (!treatment || treatment.status !== 'CONFIRMED' || treatment.prescriptions.length === 0) return;
+      if (!treatment.patient?.email) return;
+
+      const result = await sendPrescriptionEmail({
+        patientName: treatment.patient.name,
+        patientEmail: treatment.patient.email,
+        doctorName: treatment.doctor.name,
+        doctorSpecialization: treatment.doctor.doctorProfile?.specialization,
+        condition: treatment.condition,
+        diagnosis: treatment.diagnosis,
+        doctorNotes: treatment.doctorNotes,
+        prescriptions: treatment.prescriptions,
+        issuedAt: treatment.confirmedAt || treatment.updatedAt,
+        treatmentId: treatment.id,
+        isUpdate: options.isUpdate,
+        amendmentReason: options.amendmentReason,
+      });
+
+      await logAudit(actorId, result.sent ? 'PRESCRIPTION_EMAIL_SENT' : 'PRESCRIPTION_EMAIL_FAILED', req, {
+        treatmentId: treatment.id,
+        patientId: treatment.patient.id,
+        isUpdate: !!options.isUpdate,
+        ...(result.sent ? { messageId: result.messageId } : { reason: result.reason }),
+      });
+    } catch (err: any) {
+      console.error('Prescription email error:', err?.message);
+    }
+  })();
+};
+
 export const createTreatment = async (req: AuthRequest, res: Response) => {
   try {
     const doctorId = req.user!.id;
@@ -812,6 +862,10 @@ export const createTreatment = async (req: AuthRequest, res: Response) => {
       status: status || 'DRAFT',
       condition,
     });
+
+    if (treatment?.status === 'CONFIRMED') {
+      notifyPatientOfPrescription(req, treatment.id);
+    }
 
     res.status(201).json(treatment);
   } catch (error) {
@@ -891,6 +945,14 @@ export const editTreatment = async (req: AuthRequest, res: Response) => {
       status: updatedTreatment?.status,
       amendmentReason,
     });
+
+    if (updatedTreatment?.status === 'CONFIRMED') {
+      if (existingTreatment.status === 'DRAFT') {
+        notifyPatientOfPrescription(req, treatmentId);
+      } else if (prescriptions) {
+        notifyPatientOfPrescription(req, treatmentId, { isUpdate: true, amendmentReason });
+      }
+    }
 
     res.json({ message: 'Treatment updated successfully', treatment: updatedTreatment });
   } catch (error) {

@@ -38,6 +38,12 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Prescription emails (Brevo). BREVO_API_KEY and EMAIL_FROM_ADDRESS are
+      # set on the service in the Render dashboard (kept out of this file).
+      - key: EMAIL_FROM_NAME
+        value: MediTrack
+      - key: APP_URL
+        value: https://meditrack-web-k2xy-k2xy.onrender.com
 
   - type: web
     runtime: static
