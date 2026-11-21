@@ -75,9 +75,11 @@ model DoctorProfile {
 }
 
 model PatientProfile {
-  id               String @id @default(uuid())
-  userId           String @unique
-  qrCodeIdentifier String @unique
+  id                String @id @default(uuid())
+  userId            String @unique
+  qrCodeIdentifier  String @unique
+  // Language the patient wants prescriptions in (e.g. "en", "hi", "ta").
+  preferredLanguage String @default("en")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -99,6 +101,7 @@ model Treatment {
   patient       User                 @relation("PatientTreatments", fields: [patientId], references: [id], onDelete: Cascade)
   prescriptions Prescription[]
   amendments    TreatmentAmendment[]
+  translation   TreatmentTranslation?
 }
 
 model Prescription {
@@ -179,4 +182,21 @@ model StoredFile {
   size      Int
   data      Bytes
   createdAt DateTime @default(now())
+}
+
+// The patient-language version of a confirmed treatment: translated text plus an
+// ElevenLabs voice recording (stored in StoredFile under audioKey).
+// Medicine names are always kept in English.
+model TreatmentTranslation {
+  id          String   @id @default(uuid())
+  treatmentId String   @unique
+  language    String
+  status      String   @default("PENDING") // PENDING | READY | FAILED
+  content     Json?
+  audioKey    String?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
 }

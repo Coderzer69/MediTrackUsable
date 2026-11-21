@@ -1,20 +1,38 @@
 import { ChevronLeft, Calendar, FileText } from 'lucide-react';
+import { useState } from 'react';
+import PrescriptionLanguagePanel from './PrescriptionLanguagePanel';
 import { useTranslation } from 'react-i18next';
 import { withDr } from '../lib/names';
 
 interface TreatmentDetailsProps {
   onBack: () => void;
   treatment?: any;
+  // API path for the voice recording; defaults to the patient's own route.
+  audioUrl?: string;
 }
 
-export default function TreatmentDetails({ onBack, treatment }: TreatmentDetailsProps) {
+export default function TreatmentDetails({ onBack, treatment, audioUrl }: TreatmentDetailsProps) {
   const { t } = useTranslation();
+  const [showTranslated, setShowTranslated] = useState(true);
 
   if (!treatment) {
     return <div className="p-8">{t('common.loading')}</div>;
   }
 
-  const prescriptions = treatment.prescriptions || [];
+  // Patient-language version (medicine names and strengths stay in English).
+  const translation = treatment.translation || null;
+  const tr = translation && translation.status === 'READY' && translation.language !== 'en' && showTranslated ? translation.content : null;
+  const view = {
+    condition: tr?.condition ?? treatment.condition,
+    diagnosis: tr?.diagnosis ?? treatment.diagnosis,
+    doctorNotes: tr?.doctorNotes ?? treatment.doctorNotes,
+  };
+  const prescriptions = (treatment.prescriptions || []).map((p: any, i: number) => {
+    const tp = tr?.prescriptions?.[i];
+    return tp
+      ? { ...p, dosage: tp.dosage ?? p.dosage, frequency: tp.frequency ?? p.frequency, duration: tp.duration ?? p.duration, route: tp.route ?? p.route, instructions: tp.instructions ?? p.instructions }
+      : p;
+  });
   const amendments = treatment.amendments || [];
 
   return (
@@ -29,6 +47,13 @@ export default function TreatmentDetails({ onBack, treatment }: TreatmentDetails
         </button>
         <h1 className="text-2xl font-bold text-gray-900">{t('treatment.treatmentDetails')}</h1>
       </div>
+
+      <PrescriptionLanguagePanel
+        translation={translation}
+        audioUrl={audioUrl || `/patient/treatments/${treatment.id}/audio`}
+        showTranslated={showTranslated}
+        onToggle={setShowTranslated}
+      />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] mb-8 overflow-hidden">
         {/* Treatment Date & Status */}
@@ -61,14 +86,14 @@ export default function TreatmentDetails({ onBack, treatment }: TreatmentDetails
         <div className="px-5 sm:px-8 py-6">
           <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-y-4 sm:gap-y-6">
             <div className="text-[15px] font-medium text-gray-500 sm:pt-0">{t('treatment.condition')}</div>
-            <div className="text-[15px] font-bold text-gray-900">{treatment.condition || '—'}</div>
+            <div className="text-[15px] font-bold text-gray-900">{view.condition || '—'}</div>
 
             <div className="text-[15px] font-medium text-gray-500">{t('treatment.diagnosis')}</div>
-            <div className="text-[15px] font-bold text-gray-900">{treatment.diagnosis || '—'}</div>
+            <div className="text-[15px] font-bold text-gray-900">{view.diagnosis || '—'}</div>
 
             <div className="text-[15px] font-medium text-gray-500">{t('treatment.doctorNotes')}</div>
             <div className="text-[15px] font-bold text-gray-900 leading-relaxed whitespace-pre-wrap">
-              {treatment.doctorNotes || '—'}
+              {view.doctorNotes || '—'}
             </div>
           </div>
         </div>
@@ -88,7 +113,7 @@ export default function TreatmentDetails({ onBack, treatment }: TreatmentDetails
               <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] overflow-hidden">
                 <div className="p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-[18px] font-bold text-gray-900">{p.medicineName}</h3>
+                    <h3 className="text-[18px] font-bold text-gray-900" dir="ltr">{p.medicineName}</h3>
                     <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-[13px] font-bold rounded-md">
                       {p.route || t('treatment.oral')}
                     </span>

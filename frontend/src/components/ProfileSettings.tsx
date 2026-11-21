@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
+import { PATIENT_LANGUAGES } from '../lib/patientLanguages';
 
 interface ProfileSettingsProps {
   onBack: () => void;
@@ -22,6 +23,8 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
     name: profile?.user?.name || user?.name || 'Patient',
     email: profile?.user?.email || user?.email || '',
   });
+  const initialLanguage = profile?.preferredLanguage || (user as any)?.preferredLanguage || 'en';
+  const [preferredLanguage, setPreferredLanguage] = useState<string>(initialLanguage);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -42,9 +45,14 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         name: formData.name,
         email: formData.email,
       });
+      if (preferredLanguage !== initialLanguage) {
+        await api.patch('/patient/preferences', { preferredLanguage });
+        if (profile) profile.preferredLanguage = preferredLanguage;
+      }
       updateUser({
         name: res.data.user.name,
         email: res.data.user.email,
+        ...({ preferredLanguage } as any),
       });
       setSuccessMsg('Profile updated successfully!');
       setTimeout(() => setActiveSection('menu'), 1200);
@@ -127,6 +135,24 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-600 text-sm"
               />
+            </div>
+            <div>
+              <label htmlFor="preferred-language" className="block text-sm font-bold text-gray-900 mb-2">Prescription language</label>
+              <select
+                id="preferred-language"
+                value={preferredLanguage}
+                onChange={(e) => setPreferredLanguage(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:outline-none focus:border-emerald-600 text-sm"
+              >
+                {PATIENT_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.code === 'en' ? 'English' : `${l.native} — ${l.name}`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Your prescriptions, emails and voice recordings will be in this language. Medicine names stay in English.
+              </p>
             </div>
           </div>
           <button

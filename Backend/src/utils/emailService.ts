@@ -8,31 +8,21 @@
 //
 // Never log email bodies: they contain medical information.
 
-const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
+import type { LocalizedTreatment } from './prescriptionTranslation';
 
-export type PrescriptionItem = {
-  medicineName: string;
-  strength?: string | null;
-  dosage?: string | null;
-  frequency?: string | null;
-  duration?: string | null;
-  route?: string | null;
-  instructions?: string | null;
-};
+const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 
 export type PrescriptionEmailInput = {
   patientName: string;
   patientEmail: string;
   doctorName: string;
   doctorSpecialization?: string | null;
-  condition?: string | null;
-  diagnosis?: string | null;
-  doctorNotes?: string | null;
-  prescriptions: PrescriptionItem[];
   issuedAt: Date;
   treatmentId: string;
   isUpdate?: boolean;
-  amendmentReason?: string | null;
+  // Text in the patient's language (medicine names stay in English).
+  localized: LocalizedTreatment;
+  hasAudio?: boolean;
 };
 
 export type EmailResult = { sent: true; messageId?: string } | { sent: false; reason: string };
@@ -51,26 +41,41 @@ const escapeHtml = (value: unknown) =>
 
 const withDr = (name: string) => (/^dr\.?\s/i.test(name.trim()) ? name.trim() : `Dr. ${name.trim()}`);
 
-const formatDate = (d: Date) =>
-  d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+const LOCALES: Record<string, string> = {
+  en: 'en-IN', hi: 'hi-IN', bn: 'bn-IN', mr: 'mr-IN', ta: 'ta-IN', te: 'te-IN',
+  gu: 'gu-IN', kn: 'kn-IN', ml: 'ml-IN', pa: 'pa-IN', ur: 'ur-IN',
+};
+
+const formatDate = (d: Date, lang: string) => {
+  try {
+    return d.toLocaleDateString(LOCALES[lang] || 'en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  } catch {
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  }
+};
+
+const fill = (template: string, vars: Record<string, string>) =>
+  template.replace(/\{(name|doctor)\}/g, (_, k) => vars[k] ?? '');
 
 export const buildPrescriptionEmail = (input: PrescriptionEmailInput) => {
+  const loc = input.localized;
+  const L = loc.labels;
   const doctor = withDr(input.doctorName);
-  const date = formatDate(input.issuedAt);
+  const vars = { name: input.patientName, doctor };
+  const date = formatDate(input.issuedAt, loc.language);
   const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-  const subject = input.isUpdate
-    ? `Your prescription from ${doctor} was updated – MediTrack`
-    : `Your prescription from ${doctor} – MediTrack`;
+  const dir = loc.language === 'ur' ? 'rtl' : 'ltr';
+  const subject = fill(input.isUpdate ? L.subjectUpdate : L.subject, vars);
 
   const cell = 'padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;vertical-align:top;';
-  const head = 'padding:10px 12px;border-bottom:2px solid #d1d5db;font-size:12px;color:#6b7280;text-align:left;text-transform:uppercase;letter-spacing:.04em;';
+  const head = 'padding:10px 12px;border-bottom:2px solid #d1d5db;font-size:12px;color:#6b7280;text-align:start;';
 
-  const rows = input.prescriptions
+  const rows = loc.prescriptions
     .map((p, i) => {
       const details = [p.strength, p.route].filter(Boolean).map(escapeHtml).join(' · ');
       return `<tr>
         <td style="${cell}">${i + 1}</td>
-        <td style="${cell}"><strong>${escapeHtml(p.medicineName)}</strong>${details ? `<br><span style="color:#6b7280;font-size:13px;">${details}</span>` : ''}${p.instructions ? `<br><span style="color:#374151;font-size:13px;">${escapeHtml(p.instructions)}</span>` : ''}</td>
+        <td style="${cell}"><strong dir="ltr">${escapeHtml(p.medicineName)}</strong>${details ? `<br><span style="color:#6b7280;font-size:13px;">${details}</span>` : ''}${p.instructions ? `<br><span style="color:#374151;font-size:13px;">${escapeHtml(p.instructions)}</span>` : ''}</td>
         <td style="${cell}">${escapeHtml(p.dosage || '–')}</td>
         <td style="${cell}">${escapeHtml(p.frequency || '–')}</td>
         <td style="${cell}">${escapeHtml(p.duration || '–')}</td>
@@ -79,57 +84,57 @@ export const buildPrescriptionEmail = (input: PrescriptionEmailInput) => {
     .join('');
 
   const infoRow = (label: string, value?: string | null) =>
-    value ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:14px;width:130px;">${label}</td><td style="padding:4px 0;color:#111827;font-size:14px;">${escapeHtml(value)}</td></tr>` : '';
+    value ? `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;font-size:14px;">${escapeHtml(label)}</td><td style="padding:4px 0;color:#111827;font-size:14px;">${escapeHtml(value)}</td></tr>` : '';
 
   const html = `<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<html lang="${loc.language}" dir="${dir}"><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,'Noto Sans',sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;"><tr><td align="center">
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
   <tr><td style="background:#0f5132;padding:20px 28px;color:#ffffff;">
     <div style="font-size:20px;font-weight:bold;">MediTrack</div>
-    <div style="font-size:13px;opacity:.85;">${input.isUpdate ? 'Updated prescription' : 'Prescription'}</div>
+    <div style="font-size:13px;opacity:.85;">${escapeHtml(input.isUpdate ? L.titleUpdate : L.title)}</div>
   </td></tr>
   <tr><td style="padding:24px 28px;">
-    <p style="margin:0 0 12px;font-size:15px;color:#111827;">Hello ${escapeHtml(input.patientName)},</p>
-    <p style="margin:0 0 20px;font-size:15px;color:#374151;">${input.isUpdate
-      ? `${escapeHtml(doctor)} updated your prescription. The current version is below.`
-      : `${escapeHtml(doctor)} has issued a prescription for you. Here are the details.`}</p>
+    <p style="margin:0 0 12px;font-size:15px;color:#111827;">${escapeHtml(fill(L.greeting, vars))}</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#374151;">${escapeHtml(fill(input.isUpdate ? L.introUpdate : L.intro, vars))}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
-      ${infoRow('Doctor', doctor + (input.doctorSpecialization ? ` (${input.doctorSpecialization})` : ''))}
-      ${infoRow('Date', date)}
-      ${infoRow('Condition', input.condition)}
-      ${infoRow('Diagnosis', input.diagnosis)}
-      ${input.isUpdate ? infoRow('Reason for update', input.amendmentReason) : ''}
+      ${infoRow(L.doctor, doctor + (input.doctorSpecialization ? ` (${input.doctorSpecialization})` : ''))}
+      ${infoRow(L.date, date)}
+      ${infoRow(L.condition, loc.condition)}
+      ${infoRow(L.diagnosis, loc.diagnosis)}
+      ${input.isUpdate ? infoRow(L.reasonForUpdate, loc.amendmentReason) : ''}
     </table>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-      <tr><th style="${head}">#</th><th style="${head}">Medicine</th><th style="${head}">Dosage</th><th style="${head}">Frequency</th><th style="${head}">Duration</th></tr>
+      <tr><th style="${head}">#</th><th style="${head}">${escapeHtml(L.medicine)}</th><th style="${head}">${escapeHtml(L.dosage)}</th><th style="${head}">${escapeHtml(L.frequency)}</th><th style="${head}">${escapeHtml(L.duration)}</th></tr>
       ${rows}
     </table>
-    ${input.doctorNotes ? `<p style="margin:20px 0 0;font-size:14px;color:#374151;"><strong>Doctor's notes:</strong> ${escapeHtml(input.doctorNotes)}</p>` : ''}
-    ${appUrl ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(appUrl)}/login" style="display:inline-block;background:#0f5132;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">Open MediTrack</a></p>` : ''}
-    <p style="margin:24px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">Take medicines only as your doctor directed. If you have questions or side effects, contact your doctor. This email contains personal medical information; if you received it by mistake, please delete it.</p>
+    ${loc.doctorNotes ? `<p style="margin:20px 0 0;font-size:14px;color:#374151;"><strong>${escapeHtml(L.notes)}:</strong> ${escapeHtml(loc.doctorNotes)}</p>` : ''}
+    ${input.hasAudio ? `<p style="margin:20px 0 0;font-size:14px;color:#0f5132;">🔊 ${escapeHtml(L.listen)}</p>` : ''}
+    ${appUrl ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(appUrl)}/login" style="display:inline-block;background:#0f5132;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">${escapeHtml(L.openApp)}</a></p>` : ''}
+    <p style="margin:24px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">${escapeHtml(L.disclaimer)}</p>
   </td></tr>
 </table>
 </td></tr></table>
 </body></html>`;
 
   const text = [
-    `Hello ${input.patientName},`,
+    fill(L.greeting, vars),
     '',
-    input.isUpdate ? `${doctor} updated your prescription.` : `${doctor} has issued a prescription for you.`,
-    `Date: ${date}`,
-    input.condition ? `Condition: ${input.condition}` : '',
-    input.diagnosis ? `Diagnosis: ${input.diagnosis}` : '',
-    input.isUpdate && input.amendmentReason ? `Reason for update: ${input.amendmentReason}` : '',
+    fill(input.isUpdate ? L.introUpdate : L.intro, vars),
+    `${L.date}: ${date}`,
+    loc.condition ? `${L.condition}: ${loc.condition}` : '',
+    loc.diagnosis ? `${L.diagnosis}: ${loc.diagnosis}` : '',
+    input.isUpdate && loc.amendmentReason ? `${L.reasonForUpdate}: ${loc.amendmentReason}` : '',
     '',
-    ...input.prescriptions.map((p, i) => {
+    ...loc.prescriptions.map((p, i) => {
       const how = [p.dosage, p.frequency, p.duration].filter(Boolean).join(', ');
       return `${i + 1}. ${p.medicineName}${p.strength ? ` ${p.strength}` : ''}${how ? ` – ${how}` : ''}${p.instructions ? ` (${p.instructions})` : ''}`;
     }),
-    input.doctorNotes ? `\nDoctor's notes: ${input.doctorNotes}` : '',
-    appUrl ? `\nOpen MediTrack: ${appUrl}/login` : '',
+    loc.doctorNotes ? `\n${L.notes}: ${loc.doctorNotes}` : '',
+    input.hasAudio ? `\n${L.listen}` : '',
+    appUrl ? `\n${L.openApp}: ${appUrl}/login` : '',
     '',
-    'Take medicines only as your doctor directed.',
+    L.disclaimer,
   ]
     .filter((l) => l !== '')
     .join('\n');

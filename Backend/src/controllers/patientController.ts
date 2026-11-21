@@ -17,7 +17,9 @@ import {
   toDocumentDto,
   documentStorageKey,
 } from '../utils/medicalDocuments';
-import { saveStoredFileFromDisk, deleteStoredFile } from '../utils/fileStore';
+import { saveStoredFileFromDisk, deleteStoredFile, getStoredFile } from '../utils/fileStore';
+import { isPatientLanguage, PATIENT_LANGUAGES } from '../utils/languages';
+import { toTranslationDto } from '../utils/prescriptionDelivery';
 
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
@@ -176,14 +178,59 @@ export const getTreatments = async (req: AuthRequest, res: Response) => {
         doctor: { select: { name: true } },
         prescriptions: true,
         amendments: true,
+        translation: true,
       },
       orderBy: { confirmedAt: 'desc' },
     });
 
-    res.json(treatments);
+    res.json(treatments.map((t) => ({ ...t, translation: toTranslationDto(t.translation) })));
   } catch (error) {
     console.error('Error fetching patient treatments:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Patient chooses the language they want prescriptions in (text, email and audio).
+export const updatePreferences = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { preferredLanguage } = req.body;
+    if (!isPatientLanguage(preferredLanguage)) {
+      return res.status(400).json({ error: 'Unsupported language', supported: Object.keys(PATIENT_LANGUAGES) });
+    }
+    const profile = await prisma.patientProfile.update({
+      where: { userId },
+      data: { preferredLanguage },
+    });
+    await logAudit(userId, 'PATIENT_UPDATE_LANGUAGE', req, { preferredLanguage });
+    res.json({ message: 'Preferences updated', preferredLanguage: profile.preferredLanguage });
+  } catch (error) {
+    console.error('Error updating patient preferences:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getLanguages = (_req: AuthRequest, res: Response) => {
+  res.json(Object.entries(PATIENT_LANGUAGES).map(([code, l]) => ({ code, name: l.name, native: l.native })));
+};
+
+// The voice recording of one of the patient's own prescriptions.
+export const getTreatmentAudio = async (req: AuthRequest, res: Response) => {
+  try {
+    const treatment = await prisma.treatment.findFirst({
+      where: { id: req.params.id as string, patientId: req.user!.id, status: 'CONFIRMED' },
+      select: { translation: { select: { audioKey: true } } },
+    });
+    if (!treatment?.translation?.audioKey) return res.status(404).json({ error: 'No audio for this prescription' });
+    const file = await getStoredFile(treatment.translation.audioKey);
+    if (!file) return res.status(404).json({ error: 'No audio for this prescription' });
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.end(Buffer.from(file.data));
+  } catch (error) {
+    console.error('Error sending prescription audio:', error);
+    res.status(500).json({ error: 'Failed to load audio' });
   }
 };
 

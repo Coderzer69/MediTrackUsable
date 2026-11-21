@@ -9,6 +9,8 @@ import {
   createTreatment,
   editTreatment,
   draftFromAudio,
+  getCapabilities,
+  getTreatmentAudio,
   getPatients,
   getAccessRequests,
   submitVerification,
@@ -40,6 +42,8 @@ router.get('/patient/:id/history', getPatientHistory);
 router.get('/patient/:id/documents', getPatientDocuments);
 router.get('/patient/:patientId/documents/:documentId/file', getPatientDocumentFileForDoctor); // ?download=1
 router.get('/patient/:patientId/documents/:documentId/download', downloadPatientDocumentForDoctor);
+router.get('/capabilities', getCapabilities);
+router.get('/treatments/:id/audio', getTreatmentAudio);
 router.post('/treatment/draft-from-audio', draftFromAudio);
 router.post('/treatment', createTreatment);
 router.patch('/treatment/:id', editTreatment);

@@ -6,13 +6,14 @@ import {
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useTranslation } from 'react-i18next';
+import { defaultPatientLanguage } from '../lib/patientLanguages';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import ThemeToggle from '../components/ThemeToggle';
 
 export default function PatientSignup() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -36,6 +37,7 @@ export default function PatientSignup() {
     setLoading(true);
     try {
       const res = await api.post('/auth/register', {
+        preferredLanguage: defaultPatientLanguage(i18n?.language),
         name, email, password, role: 'PATIENT'
       });
       if (res.status === 201) {
@@ -254,6 +256,7 @@ export default function PatientSignup() {
                   const res = await api.post('/auth/oauth-login', {
                     credential: credentialResponse.credential,
                     role: 'PATIENT',
+                    preferredLanguage: defaultPatientLanguage(i18n?.language),
                   });
                   const { token, user: authUser } = res.data;
                   login(token, authUser);

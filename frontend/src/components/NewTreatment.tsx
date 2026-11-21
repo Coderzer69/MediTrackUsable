@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft, Mic, Save, Edit, Trash2, Plus, CheckCircle2,
-  Loader2, AlertCircle, Volume2, X, Sparkles
+  Loader2, AlertCircle, Volume2, X, Sparkles, Languages
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReviewTreatment from './ReviewTreatment';
 import api from '../lib/api';
+import { PATIENT_LANGUAGES, languageLabel } from '../lib/patientLanguages';
 
 interface NewTreatmentProps {
   onBack: () => void;
@@ -21,6 +22,20 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
   const [isDrafting, setIsDrafting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  // Server features: ElevenLabs dictation / patient voice
+  const [caps, setCaps] = useState<{ elevenLabsDictation: boolean; patientVoice: boolean; email: boolean } | null>(null);
+  // Language the patient receives the prescription in (their setting; doctor can override)
+  const [patientLanguage, setPatientLanguage] = useState<string>(patient?.preferredLanguage || 'en');
+
+  useEffect(() => {
+    api.get('/doctor/capabilities').then((res) => setCaps(res.data)).catch(() => setCaps(null));
+  }, []);
+
+  useEffect(() => {
+    if (patient?.preferredLanguage) setPatientLanguage(patient.preferredLanguage);
+  }, [patient?.preferredLanguage]);
+
+  const useScribe = !!caps?.elevenLabsDictation;
 
   // Treatment Form State
   const [condition, setCondition] = useState('');
@@ -187,6 +202,10 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
       });
 
       const draft = res.data.data;
+      if (res.data.transcript) {
+        transcriptSegmentsRef.current = [res.data.transcript];
+        setTranscript(res.data.transcript);
+      }
       if (draft) {
         if (draft.condition) setCondition(draft.condition);
         if (draft.symptoms) setSymptoms(draft.symptoms);
@@ -195,7 +214,11 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
         if (draft.prescriptions && draft.prescriptions.length > 0) {
           setPrescriptions(draft.prescriptions);
         }
-        showToast('Clinical consultation fields extracted by Gemini AI.');
+        showToast(
+          res.data.transcript
+            ? `Transcribed by ElevenLabs${res.data.detectedLanguage ? ` (${languageLabel(res.data.detectedLanguage)})` : ''} and filled in. Please review.`
+            : 'Clinical consultation fields extracted by Gemini AI.'
+        );
       }
     } catch (err: any) {
       console.error('Failed to generate draft', err);
@@ -225,6 +248,7 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
         doctorNotes,
         prescriptions,
         status: confirm ? 'CONFIRMED' : 'DRAFT',
+        patientLanguage,
       });
       showToast(confirm ? t('treatment.treatmentConfirmedSuccess') : t('treatment.treatmentSavedSuccess'));
       setTimeout(() => onBack(), 600);
@@ -353,6 +377,31 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
             </div>
           </div>
 
+          {/* Patient's language */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Languages className="w-4 h-4 text-emerald-600" />
+              <label htmlFor="patient-language" className="text-sm font-bold text-gray-900">Patient's language</label>
+            </div>
+            <select
+              id="patient-language"
+              value={patientLanguage}
+              onChange={(e) => setPatientLanguage(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-emerald-600"
+            >
+              {PATIENT_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.code === 'en' ? 'English' : `${l.native} — ${l.name}`}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+              {patient?.preferredLanguage && patient.preferredLanguage !== patientLanguage
+                ? `Patient's setting is ${languageLabel(patient.preferredLanguage)}; this consultation will use ${languageLabel(patientLanguage)}.`
+                : 'On confirm, the patient gets the prescription in this language'}
+              {caps?.patientVoice ? ', with a voice recording' : ''}
+              {caps?.email ? ' and by email' : ''}. Medicine names stay in English.
+            </p>
+          </div>
+
           {/* AI Voice Assistant */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col items-center text-center">
             <div className="flex items-center gap-2 self-start mb-4">
@@ -365,9 +414,11 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
             </p>
 
             <button
-              onClick={toggleSpeechRecognition}
-              className={`w-20 h-20 rounded-full flex flex-col items-center justify-center text-white mb-3 shadow-lg transition-all cursor-pointer ${
-                isRecording
+              onClick={useScribe ? toggleMediaRecorder : toggleSpeechRecognition}
+              disabled={isDrafting}
+              aria-label={(isRecording || isMediaRecording) ? t('treatment.stopVoice') : t('treatment.startVoice')}
+              className={`w-20 h-20 rounded-full flex flex-col items-center justify-center text-white mb-3 shadow-lg transition-all cursor-pointer disabled:opacity-60 ${
+                (isRecording || isMediaRecording)
                   ? 'bg-red-600 hover:bg-red-700 shadow-red-900/20 animate-pulse scale-105'
                   : 'bg-[#0b5c46] hover:bg-[#084836] shadow-emerald-900/20'
               }`}
@@ -375,14 +426,16 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
               <Mic className="w-8 h-8" />
             </button>
             <p className="text-sm font-bold text-gray-900 mb-1">
-              {isRecording ? t('landing.listening') : t('treatment.startVoice')}
+              {isDrafting ? t('treatment.extractingAi') : (isRecording || isMediaRecording) ? t('treatment.stopVoice') : t('treatment.startVoice')}
             </p>
             <p className="text-[11px] text-gray-400 mb-4">
-              {isRecording ? t('landing.listening') : 'AI Ready'}
+              {useScribe
+                ? (isMediaRecording ? 'Recording… tap again to stop' : 'ElevenLabs · speak in any language')
+                : (isRecording ? t('landing.listening') : 'AI Ready')}
             </p>
 
-            {/* Direct Gemini Audio Fallback Option */}
-            <div className="w-full pt-4 border-t border-gray-100">
+            {/* Direct Gemini Audio Fallback Option (only when ElevenLabs dictation is off) */}
+            {!useScribe && <div className="w-full pt-4 border-t border-gray-100">
               <button
                 onClick={toggleMediaRecorder}
                 className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
@@ -394,7 +447,7 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
                 <Volume2 className="w-3.5 h-3.5" />
                 {isMediaRecording ? t('treatment.stopVoice') : t('treatment.startVoice')}
               </button>
-            </div>
+            </div>}
 
             {/* Live Transcript Box */}
             {transcript !== '' && (

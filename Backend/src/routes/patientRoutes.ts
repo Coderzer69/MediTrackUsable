@@ -13,6 +13,9 @@ import {
   uploadAvatar,
   deleteAvatar,
   getDocumentFile,
+  updatePreferences,
+  getLanguages,
+  getTreatmentAudio,
 } from '../controllers/patientController';
 import { authenticate, requireRole } from '../middlewares/authMiddleware';
 import { upload } from '../middlewares/uploadMiddleware';
@@ -27,7 +30,10 @@ router.patch('/profile', updateProfile);
 router.post('/profile/avatar', upload.single('avatar'), uploadAvatar);
 router.delete('/profile/avatar', deleteAvatar);
 router.patch('/password', updatePassword);
+router.patch('/preferences', updatePreferences);
+router.get('/languages', getLanguages);
 router.get('/treatments', getTreatments);
+router.get('/treatments/:id/audio', getTreatmentAudio);
 router.get('/access-requests', getAccessRequests);
 router.patch('/access-requests/:id', updateAccessRequest);
 

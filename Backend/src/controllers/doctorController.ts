@@ -8,7 +8,11 @@ import { TreatmentStatus } from '@prisma/client';
 import OpenAI from 'openai';
 import { logAudit } from '../utils/auditLogger';
 import { sendDocumentFile, toDocumentDto } from '../utils/medicalDocuments';
-import { sendPrescriptionEmail } from '../utils/emailService';
+import { deliverPrescriptionToPatient, toTranslationDto } from '../utils/prescriptionDelivery';
+import { isElevenLabsConfigured, speechToText } from '../utils/elevenlabs';
+import { isEmailConfigured } from '../utils/emailService';
+import { PATIENT_LANGUAGES, isPatientLanguage } from '../utils/languages';
+import { getStoredFile } from '../utils/fileStore';
 
 // ADMIN is a superuser: full access to every doctor route and all underlying data.
 const isAdminRequest = (req: AuthRequest) => req.user?.role === 'ADMIN';
@@ -279,6 +283,7 @@ export const getPatients = async (req: AuthRequest, res: Response) => {
         return {
           ...p,
           qrCodeIdentifier: profile?.qrCodeIdentifier,
+          preferredLanguage: profile?.preferredLanguage || 'en',
         };
       })
     );
@@ -303,11 +308,12 @@ export const getTreatments = async (req: AuthRequest, res: Response) => {
           },
         },
         prescriptions: true,
+        translation: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json(treatments);
+    res.json(treatments.map((t) => ({ ...t, translation: toTranslationDto(t.translation) })));
   } catch (error) {
     console.error('Error fetching doctor treatments:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -387,6 +393,7 @@ export const scanPatientQr = async (req: AuthRequest, res: Response) => {
       name: patientProfile.user.name,
       email: patientProfile.user.email,
       qrCodeIdentifier: patientProfile.qrCodeIdentifier,
+      preferredLanguage: patientProfile.preferredLanguage || 'en',
     });
   } catch (error) {
     console.error('Error scanning QR:', error);
@@ -635,10 +642,30 @@ const validateAndNormalizeConsultation = (raw: any) => {
 
 export const draftFromAudio = async (req: AuthRequest, res: Response) => {
   try {
-    const { text, audioBase64, mimeType } = req.body;
+    const { audioBase64, mimeType } = req.body;
+    let text: string | undefined = typeof req.body.text === 'string' ? req.body.text : undefined;
 
     if (!text && !audioBase64) {
       return res.status(400).json({ error: 'Either transcript text or audioBase64 is required' });
+    }
+
+    // Recorded audio goes to ElevenLabs Scribe first: it detects the language, so
+    // doctors can dictate in English, Hindi, Tamil, etc. or mix them.
+    let transcript: { text: string; languageCode: string | null } | null = null;
+    let audioForModel: string | undefined = audioBase64;
+    if (audioBase64 && isElevenLabsConfigured()) {
+      try {
+        const result = await speechToText(Buffer.from(String(audioBase64), 'base64'), mimeType || 'audio/webm');
+        if (!result.text) {
+          return res.status(422).json({ error: 'No speech was detected in the recording. Please try again closer to the microphone.' });
+        }
+        transcript = { text: result.text, languageCode: result.languageCode };
+        text = result.text;
+        audioForModel = undefined;
+      } catch (sttErr: any) {
+        console.error('ElevenLabs speech-to-text failed:', sttErr?.message);
+        // Fall back to sending the audio straight to Gemini below.
+      }
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -673,17 +700,19 @@ CRITICAL RULES:
 1. Return strictly valid JSON.
 2. If any field or detail was not mentioned, set its value to null (or empty array [] for prescriptions).
 3. Do not invent any medication not mentioned in the audio or transcript.
+4. The consultation may be spoken in English, Hindi or another Indian language, or a mix. Write every output field in English.
+5. Write medicine names in English as normally spelled (e.g. "Paracetamol"), even if they were spoken in another language.
 ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
 `;
 
     const executeAiCall = async (): Promise<any> => {
       if (geminiKey) {
         const parts: any[] = [];
-        if (audioBase64) {
+        if (audioForModel) {
           parts.push({
             inlineData: {
               mimeType: mimeType || 'audio/webm',
-              data: audioBase64,
+              data: audioForModel,
             },
           });
         }
@@ -750,6 +779,8 @@ ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
       await logAudit(req.user.id, 'DOCTOR_DRAFT_CONSULTATION', req, {
         patientId: req.body.patientId,
         hasAudio: !!audioBase64,
+        transcribedBy: transcript ? 'elevenlabs' : audioBase64 ? 'gemini' : 'browser',
+        detectedLanguage: transcript?.languageCode,
         transcriptLength: text?.length,
       });
     }
@@ -757,6 +788,8 @@ ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
     res.json({
       message: 'Structured data drafted. Please review before confirming.',
       data: draftData,
+      transcript: transcript?.text ?? null,
+      detectedLanguage: transcript?.languageCode ?? null,
     });
   } catch (error: any) {
     console.error('Error drafting from audio text:', error);
@@ -764,59 +797,70 @@ ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
   }
 };
 
-// Emails the patient their prescription (Brevo). Runs in the background so a slow
-// or failing email never blocks or breaks saving the treatment. Only the outcome
-// is logged, never the medical content.
+// Prepares the prescription for the patient in the background: translation into
+// their language, an ElevenLabs voice recording, and the email. A slow or failing
+// step never blocks or breaks saving the treatment. Only outcomes are logged.
 const notifyPatientOfPrescription = (
   req: AuthRequest,
   treatmentId: string,
-  options: { isUpdate?: boolean; amendmentReason?: string | null } = {},
+  options: { language?: string | null; isUpdate?: boolean; amendmentReason?: string | null } = {},
 ) => {
   const actorId = req.user!.id;
   void (async () => {
     try {
-      const treatment = await prisma.treatment.findUnique({
-        where: { id: treatmentId },
-        include: {
-          prescriptions: { orderBy: { createdAt: 'asc' } },
-          patient: { select: { id: true, name: true, email: true } },
-          doctor: { select: { name: true, doctorProfile: { select: { specialization: true } } } },
-        },
-      });
-      if (!treatment || treatment.status !== 'CONFIRMED' || treatment.prescriptions.length === 0) return;
-      if (!treatment.patient?.email) return;
-
-      const result = await sendPrescriptionEmail({
-        patientName: treatment.patient.name,
-        patientEmail: treatment.patient.email,
-        doctorName: treatment.doctor.name,
-        doctorSpecialization: treatment.doctor.doctorProfile?.specialization,
-        condition: treatment.condition,
-        diagnosis: treatment.diagnosis,
-        doctorNotes: treatment.doctorNotes,
-        prescriptions: treatment.prescriptions,
-        issuedAt: treatment.confirmedAt || treatment.updatedAt,
-        treatmentId: treatment.id,
-        isUpdate: options.isUpdate,
-        amendmentReason: options.amendmentReason,
-      });
-
-      await logAudit(actorId, result.sent ? 'PRESCRIPTION_EMAIL_SENT' : 'PRESCRIPTION_EMAIL_FAILED', req, {
-        treatmentId: treatment.id,
-        patientId: treatment.patient.id,
+      const result = await deliverPrescriptionToPatient(treatmentId, options);
+      if (!result) return;
+      await logAudit(actorId, result.email.sent ? 'PRESCRIPTION_EMAIL_SENT' : 'PRESCRIPTION_EMAIL_FAILED', req, {
+        treatmentId,
         isUpdate: !!options.isUpdate,
-        ...(result.sent ? { messageId: result.messageId } : { reason: result.reason }),
+        language: result.language,
+        translated: result.translated,
+        audio: result.audio,
+        ...(result.email.sent ? { messageId: result.email.messageId } : { reason: result.email.reason }),
+        ...(result.errors.length ? { problems: result.errors.map((e) => e.slice(0, 200)) } : {}),
       });
     } catch (err: any) {
-      console.error('Prescription email error:', err?.message);
+      console.error('Prescription delivery error:', err?.message);
     }
   })();
+};
+
+// What the doctor's screen can offer (no secrets).
+export const getCapabilities = async (_req: AuthRequest, res: Response) => {
+  res.json({
+    elevenLabsDictation: isElevenLabsConfigured(),
+    patientVoice: isElevenLabsConfigured(),
+    email: isEmailConfigured(),
+    languages: Object.entries(PATIENT_LANGUAGES).map(([code, l]) => ({ code, name: l.name, native: l.native })),
+  });
+};
+
+// Doctor (or admin) listens to the patient-language recording of their own treatment.
+export const getTreatmentAudio = async (req: AuthRequest, res: Response) => {
+  try {
+    const treatmentId = req.params.id as string;
+    const treatment = await prisma.treatment.findFirst({
+      where: { id: treatmentId, ...doctorScope(req) },
+      select: { id: true, translation: { select: { audioKey: true } } },
+    });
+    if (!treatment?.translation?.audioKey) return res.status(404).json({ error: 'No audio for this treatment' });
+    const file = await getStoredFile(treatment.translation.audioKey);
+    if (!file) return res.status(404).json({ error: 'No audio for this treatment' });
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.end(Buffer.from(file.data));
+  } catch (error) {
+    console.error('Error sending treatment audio:', error);
+    res.status(500).json({ error: 'Failed to load audio' });
+  }
 };
 
 export const createTreatment = async (req: AuthRequest, res: Response) => {
   try {
     const doctorId = req.user!.id;
     const { patientId, condition, symptoms, diagnosis, doctorNotes, status, prescriptions } = req.body;
+    const patientLanguage = isPatientLanguage(req.body.patientLanguage) ? req.body.patientLanguage : null;
 
     if (status === 'CONFIRMED' && !(await isDoctorVerified(doctorId))) {
       return res.status(403).json({ error: 'Only verified doctors can confirm treatments' });
@@ -864,7 +908,7 @@ export const createTreatment = async (req: AuthRequest, res: Response) => {
     });
 
     if (treatment?.status === 'CONFIRMED') {
-      notifyPatientOfPrescription(req, treatment.id);
+      notifyPatientOfPrescription(req, treatment.id, { language: patientLanguage });
     }
 
     res.status(201).json(treatment);
@@ -879,6 +923,7 @@ export const editTreatment = async (req: AuthRequest, res: Response) => {
     const doctorId = req.user!.id;
     const treatmentId = req.params.id as string;
     const { condition, symptoms, diagnosis, doctorNotes, status, prescriptions, amendmentReason } = req.body;
+    const patientLanguage = isPatientLanguage(req.body.patientLanguage) ? req.body.patientLanguage : null;
 
     const existingTreatment = await prisma.treatment.findUnique({
       where: { id: treatmentId },
@@ -948,9 +993,9 @@ export const editTreatment = async (req: AuthRequest, res: Response) => {
 
     if (updatedTreatment?.status === 'CONFIRMED') {
       if (existingTreatment.status === 'DRAFT') {
-        notifyPatientOfPrescription(req, treatmentId);
+        notifyPatientOfPrescription(req, treatmentId, { language: patientLanguage });
       } else if (prescriptions) {
-        notifyPatientOfPrescription(req, treatmentId, { isUpdate: true, amendmentReason });
+        notifyPatientOfPrescription(req, treatmentId, { language: patientLanguage, isUpdate: true, amendmentReason });
       }
     }
 

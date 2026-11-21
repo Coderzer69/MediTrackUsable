@@ -9,6 +9,7 @@ import { Role } from '@prisma/client';
 
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { logAudit } from '../utils/auditLogger';
+import { normalizeLanguage } from '../utils/languages';
 
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID
@@ -27,6 +28,7 @@ const buildAuthUser = (user: any) => ({
   }),
   ...(user.patientProfile && {
     qrCodeIdentifier: user.patientProfile.qrCodeIdentifier,
+    preferredLanguage: user.patientProfile.preferredLanguage,
   }),
 });
 
@@ -153,6 +155,7 @@ export const register = async (req: Request, res: Response) => {
           data: {
             userId: newUser.id,
             qrCodeIdentifier: qrCode,
+            preferredLanguage: normalizeLanguage(req.body.preferredLanguage),
           },
         });
       }
@@ -399,6 +402,7 @@ export const oauthLogin = async (req: Request, res: Response) => {
             data: {
               userId: newUser.id,
               qrCodeIdentifier: qrCode,
+              preferredLanguage: normalizeLanguage(req.body.preferredLanguage),
             },
           });
         }

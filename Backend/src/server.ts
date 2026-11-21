@@ -59,7 +59,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 600,
 }));
-app.use(express.json());
+// Larger limit for recorded consultation audio sent as base64.
+app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Public uploads (doctor verification files and avatars).
