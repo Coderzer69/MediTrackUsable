@@ -222,6 +222,10 @@ export default function NewTreatment({ onBack, patient }: NewTreatmentProps) {
       }
     } catch (err: any) {
       console.error('Failed to generate draft', err);
+      if (err.response?.data?.transcript) {
+        transcriptSegmentsRef.current = [err.response.data.transcript];
+        setTranscript(err.response.data.transcript);
+      }
       showToast(err.response?.data?.error || 'Failed to extract draft with Gemini AI', 'error');
     } finally {
       setIsDrafting(false);

@@ -768,11 +768,28 @@ ${text ? `\nConsultation Transcript:\n"${text}"` : ''}
 
     // Execute with one automatic retry on failure
     let draftData: any = null;
-    try {
-      draftData = await executeAiCall();
-    } catch (firstErr) {
-      console.warn('Initial AI consultation parse attempt failed, retrying once...', firstErr);
-      draftData = await executeAiCall();
+    let lastAiErr: any = null;
+    for (const delay of [0, 2000, 5000]) {
+      if (delay) await new Promise((r) => setTimeout(r, delay));
+      try {
+        draftData = await executeAiCall();
+        lastAiErr = null;
+        break;
+      } catch (aiErr: any) {
+        lastAiErr = aiErr;
+        console.warn('AI consultation parse attempt failed:', String(aiErr?.message).slice(0, 120));
+      }
+    }
+    if (lastAiErr) {
+      // Still give the doctor the transcript so they can fill the form by hand.
+      if (transcript) {
+        return res.status(503).json({
+          error: 'The AI is busy right now. Your speech was transcribed; please try "Generate draft" again in a moment.',
+          transcript: transcript.text,
+          detectedLanguage: transcript.languageCode,
+        });
+      }
+      throw lastAiErr;
     }
 
     if (req.user?.id) {
@@ -823,6 +840,24 @@ const notifyPatientOfPrescription = (
       console.error('Prescription delivery error:', err?.message);
     }
   })();
+};
+
+// Re-runs translation + voice + email for one of the doctor's confirmed treatments
+// (e.g. after the AI service was temporarily unavailable).
+export const redeliverTreatment = async (req: AuthRequest, res: Response) => {
+  try {
+    const treatment = await prisma.treatment.findFirst({
+      where: { id: req.params.id as string, status: 'CONFIRMED', ...doctorScope(req) },
+      select: { id: true },
+    });
+    if (!treatment) return res.status(404).json({ error: 'Confirmed treatment not found' });
+    const language = isPatientLanguage(req.body?.patientLanguage) ? req.body.patientLanguage : null;
+    notifyPatientOfPrescription(req, treatment.id, { language });
+    res.status(202).json({ message: 'Preparing the patient-language version again. It will be ready in about a minute.' });
+  } catch (error) {
+    console.error('Error re-delivering treatment:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
 // What the doctor's screen can offer (no secrets).

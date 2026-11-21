@@ -11,6 +11,7 @@ import {
   draftFromAudio,
   getCapabilities,
   getTreatmentAudio,
+  redeliverTreatment,
   getPatients,
   getAccessRequests,
   submitVerification,
@@ -44,6 +45,7 @@ router.get('/patient/:patientId/documents/:documentId/file', getPatientDocumentF
 router.get('/patient/:patientId/documents/:documentId/download', downloadPatientDocumentForDoctor);
 router.get('/capabilities', getCapabilities);
 router.get('/treatments/:id/audio', getTreatmentAudio);
+router.post('/treatments/:id/redeliver', redeliverTreatment);
 router.post('/treatment/draft-from-audio', draftFromAudio);
 router.post('/treatment', createTreatment);
 router.patch('/treatment/:id', editTreatment);

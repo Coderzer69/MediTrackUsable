@@ -111,7 +111,23 @@ export const buildEnglishVersion = (src: SourceTreatment): LocalizedTreatment =>
   };
 };
 
+// Gemini sometimes answers 503/429 ("high demand"); retry those with backoff.
 const callGeminiJson = async (prompt: string): Promise<any> => {
+  const delays = [0, 2000, 5000, 10000];
+  let lastErr: any;
+  for (const delay of delays) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    try {
+      return await callGeminiJsonOnce(prompt);
+    } catch (err: any) {
+      lastErr = err;
+      if (!/\((429|500|502|503|504)\)|timeout|fetch failed/i.test(String(err?.message))) throw err;
+    }
+  }
+  throw lastErr;
+};
+
+const callGeminiJsonOnce = async (prompt: string): Promise<any> => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not set');
   const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
