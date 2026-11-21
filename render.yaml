@@ -5,6 +5,9 @@
 #   meditrack-admin  Admin portal (admin/)
 # The database is the existing Neon Postgres (set DATABASE_URL on meditrack-api).
 # Secrets are marked sync: false and are entered in Render, never committed.
+# Note: Render adds the Blueprint's suffix ("-k2xy") to each name below, so the
+# live services are meditrack-api-k2xy-k2xy, meditrack-web-k2xy-k2xy and
+# meditrack-admin-k2xy-k2xy. Do not rename these entries: renaming creates new services.
 
 services:
   - type: web
@@ -24,7 +27,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: CORS_ORIGINS
-        value: https://meditrack-web-k2xy.onrender.com,https://meditrack-admin-k2xy.onrender.com
+        value: https://meditrack-web-k2xy-k2xy.onrender.com,https://meditrack-admin-k2xy-k2xy.onrender.com
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
       - key: DATABASE_URL
@@ -62,7 +65,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: VITE_API_URL
-        value: https://meditrack-api-k2xy.onrender.com/api
+        value: https://meditrack-api-k2xy-k2xy.onrender.com/api
       - key: VITE_GOOGLE_CLIENT_ID
         sync: false
 
@@ -92,4 +95,4 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: VITE_API_URL
-        value: https://meditrack-api-k2xy.onrender.com/api
+        value: https://meditrack-api-k2xy-k2xy.onrender.com/api
