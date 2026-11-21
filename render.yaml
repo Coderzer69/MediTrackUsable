@@ -8,7 +8,7 @@
 
 services:
   - type: web
-    name: meditrack-api
+    name: meditrack-api-k2xy
     runtime: node
     plan: free
     region: ohio
@@ -24,7 +24,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: CORS_ORIGINS
-        value: https://meditrack-web.onrender.com,https://meditrack-admin.onrender.com
+        value: https://meditrack-web-k2xy.onrender.com,https://meditrack-admin-k2xy.onrender.com
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
       - key: DATABASE_URL
@@ -38,7 +38,7 @@ services:
 
   - type: web
     runtime: static
-    name: meditrack-web
+    name: meditrack-web-k2xy
     rootDir: frontend
     branch: main
     autoDeployTrigger: commit
@@ -62,13 +62,13 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: VITE_API_URL
-        value: https://meditrack-api.onrender.com/api
+        value: https://meditrack-api-k2xy.onrender.com/api
       - key: VITE_GOOGLE_CLIENT_ID
         sync: false
 
   - type: web
     runtime: static
-    name: meditrack-admin
+    name: meditrack-admin-k2xy
     rootDir: admin
     branch: main
     autoDeployTrigger: commit
@@ -92,4 +92,4 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: VITE_API_URL
-        value: https://meditrack-api.onrender.com/api
+        value: https://meditrack-api-k2xy.onrender.com/api

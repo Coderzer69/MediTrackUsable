@@ -50,9 +50,9 @@ The whole monorepo deploys from `render.yaml` (Render Blueprint), branch `main`:
 
 | Service | Type | Root dir | Build | Start / publish |
 |---|---|---|---|---|
-| `meditrack-api` | Web Service (Node 22) | `Backend` | `npm ci --include=dev && npm run build` | `node dist/server.js`, health `/health` |
-| `meditrack-web` | Static Site | `frontend` | `npm ci && npm run build` | `dist`, SPA rewrite `/*` → `/index.html` |
-| `meditrack-admin` | Static Site | `admin` | `npm ci && npm run build` | `dist` |
+| `meditrack-api-k2xy` | Web Service (Node 22) | `Backend` | `npm ci --include=dev && npm run build` | `node dist/server.js`, health `/health` |
+| `meditrack-web-k2xy` | Static Site | `frontend` | `npm ci && npm run build` | `dist`, SPA rewrite `/*` → `/index.html` |
+| `meditrack-admin-k2xy` | Static Site | `admin` | `npm ci && npm run build` | `dist` |
 
 - Database: the existing Neon Postgres (`DATABASE_URL`).
 - Uploaded files (medical records, doctor documents, avatars) are stored in the
