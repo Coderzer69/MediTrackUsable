@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getToken, clearSession } from './session';
 
 export const BACKEND_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace('/api', '')
+  ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '')
   : 'http://localhost:3000';
 
 export const API_URL = `${BACKEND_URL}/api`;

@@ -1,0 +1,95 @@
+# Render Blueprint for the MediTrack monorepo.
+# Three services built from this one repository:
+#   meditrack-api    Express + Prisma backend (Backend/)
+#   meditrack-web    Main React app (frontend/)
+#   meditrack-admin  Admin portal (admin/)
+# The database is the existing Neon Postgres (set DATABASE_URL on meditrack-api).
+# Secrets are marked sync: false and are entered in Render, never committed.
+
+services:
+  - type: web
+    name: meditrack-api
+    runtime: node
+    plan: free
+    region: ohio
+    rootDir: Backend
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: CORS_ORIGINS
+        value: https://meditrack-web.onrender.com,https://meditrack-admin.onrender.com
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  - type: web
+    runtime: static
+    name: meditrack-web
+    rootDir: frontend
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        value: https://meditrack-api.onrender.com/api
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+
+  - type: web
+    runtime: static
+    name: meditrack-admin
+    rootDir: admin
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        value: https://meditrack-api.onrender.com/api

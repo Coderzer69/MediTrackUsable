@@ -582,7 +582,7 @@ const servePatientDocumentForDoctor = async (req: AuthRequest, res: Response, do
       documentId,
     });
 
-    return sendDocumentFile(res, document, download);
+    return await sendDocumentFile(res, document, download);
   } catch (error) {
     console.error('Error sending patient document to doctor:', error);
     res.status(500).json({ error: 'Failed to open document' });

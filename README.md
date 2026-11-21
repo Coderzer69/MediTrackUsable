@@ -42,3 +42,25 @@ To connect your own Google Client ID:
 1. Update `VITE_GOOGLE_CLIENT_ID` in `Frontend/.env`
 2. Update `GOOGLE_CLIENT_ID` in `Backend/.env`
 
+
+---
+
+## Deployment (Render)
+The whole monorepo deploys from `render.yaml` (Render Blueprint), branch `main`:
+
+| Service | Type | Root dir | Build | Start / publish |
+|---|---|---|---|---|
+| `meditrack-api` | Web Service (Node 22) | `Backend` | `npm ci --include=dev && npm run build` | `node dist/server.js`, health `/health` |
+| `meditrack-web` | Static Site | `frontend` | `npm ci && npm run build` | `dist`, SPA rewrite `/*` → `/index.html` |
+| `meditrack-admin` | Static Site | `admin` | `npm ci && npm run build` | `dist` |
+
+- Database: the existing Neon Postgres (`DATABASE_URL`).
+- Uploaded files (medical records, doctor documents, avatars) are stored in the
+  `StoredFile` table, so they survive redeploys. Medical records are only served
+  through authenticated routes.
+- Backend env vars: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GEMINI_API_KEY`,
+  `GEMINI_MODEL`, `CORS_ORIGINS` (comma-separated frontend URLs), `NODE_ENV`.
+- Frontend env vars (public, build time): `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`.
+- Google sign-in: add the deployed frontend URL to the OAuth client's
+  "Authorized JavaScript origins" in Google Cloud Console.
+- `GET /health` = liveness, `GET /health/db` = database check.

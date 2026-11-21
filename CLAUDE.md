@@ -33,6 +33,13 @@ At ~01:10–01:22 IST on Nov 21 the `DoctorProfile` and `PatientProfile` tables 
 - Doctor names: use `withDr()` from `Frontend/src/lib/names.ts` (avoids "Dr. Dr.").
 - Doctor verification dropdown options live in `Frontend/src/lib/doctorOptions.ts`.
 
+## Deployment (Render)
+- `render.yaml` Blueprint: `meditrack-api` (web, Backend/), `meditrack-web` and `meditrack-admin` (static).
+- Files are stored in the DB (`StoredFile` table, `src/utils/fileStore.ts`); local folders are only fallbacks.
+- `oauthLogin` accepts only Google ID tokens verified against GOOGLE_CLIENT_ID; sign-up roles limited to PATIENT/DOCTOR.
+- CORS is limited to `CORS_ORIGINS` in production.
+- `deploy-1/2/3-*.bat`: schema diff (read-only) → apply reviewed SQL + import files → commit & push.
+
 ## Known issues / suggested next steps
 - **Security:** `oauthLogin` accepts unverified fallback emails (`isGoogleAuth` / `fallbackEmail` / decoded-but-unverified tokens) — anyone can log in as any email. Must fix before deploying.
 - Files in public `Backend/uploads/` (doctor licence docs, avatars) are served without auth via `/uploads`. Should move to the private pattern used for medical records.

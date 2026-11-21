@@ -15,7 +15,9 @@ import {
   resolveDocumentPath,
   sendDocumentFile,
   toDocumentDto,
+  documentStorageKey,
 } from '../utils/medicalDocuments';
+import { saveStoredFileFromDisk, deleteStoredFile } from '../utils/fileStore';
 
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
@@ -287,6 +289,10 @@ export const uploadDocument = async (req: AuthRequest, res: Response) => {
     const assignedCategory = (DOCUMENT_CATEGORIES as readonly string[]).includes(category) ? category : 'OTHER';
     const cleanTitle = typeof title === 'string' ? title.trim().slice(0, 120) : '';
 
+    // Persist the file in the database so it survives redeploys, then drop the temp copy.
+    await saveStoredFileFromDisk(`${STORED_PREFIX}${file.filename}`, file.path, file.mimetype);
+    removeFileQuietly(file.path);
+
     const newDocument = await prisma.patientDocument.create({
       data: {
         patientId,
@@ -325,6 +331,7 @@ export const deleteDocument = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.patientDocument.delete({ where: { id } });
+    await deleteStoredFile(documentStorageKey(document));
     removeFileQuietly(resolveDocumentPath(document));
 
     await logAudit(patientId, 'PATIENT_DELETE_DOCUMENT', req, {
@@ -347,7 +354,7 @@ const serveOwnDocument = async (req: AuthRequest, res: Response, download: boole
     if (!document) {
       return res.status(404).json({ error: 'Document not found' });
     }
-    return sendDocumentFile(res, document, download);
+    return await sendDocumentFile(res, document, download);
   } catch (error) {
     console.error('Error sending patient document:', error);
     res.status(500).json({ error: 'Failed to open document' });

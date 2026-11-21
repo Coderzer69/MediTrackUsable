@@ -2,3 +2,10 @@
 node_modules
 # Patient medical records (private, never commit)
 private-uploads/
+
+# Build output (Render builds it)
+dist/
+
+# Uploaded files: stored in the database (StoredFile). Never commit them.
+uploads/
+*.log

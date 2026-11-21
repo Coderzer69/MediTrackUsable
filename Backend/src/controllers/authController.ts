@@ -102,6 +102,11 @@ export const register = async (req: Request, res: Response) => {
       });
     }
 
+    // Public sign-up can only create patient or doctor accounts.
+    if (role !== Role.PATIENT && role !== Role.DOCTOR) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -280,50 +285,35 @@ export const login = async (req: Request, res: Response) => {
 
 export const oauthLogin = async (req: Request, res: Response) => {
   try {
-    const { credential, role, isGoogleAuth, email: fallbackEmail, name: fallbackName, googleId: fallbackGoogleId } = req.body;
+    const { credential, role } = req.body;
+
+    if (role !== undefined && role !== Role.PATIENT && role !== Role.DOCTOR) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
 
     let googleId: string | null = null;
     let email: string | null = null;
     let name: string | null = null;
 
-    // 1. Attempt official Google ID token verification if credential provided
-    if (credential && credential !== 'demo-google-token') {
+    // Only a Google ID token verified against our client ID is accepted.
+    // (Unverified fallbacks that trusted an email from the request body or an
+    // unchecked token payload were removed: they allowed logging in as anyone.)
+    if (typeof credential === 'string' && credential) {
       try {
         const ticket = await googleClient.verifyIdToken({
           idToken: credential,
           audience: process.env.GOOGLE_CLIENT_ID,
         });
         const payload = ticket.getPayload();
-        if (payload && payload.email) {
+        if (payload && payload.email && payload.email_verified !== false) {
           googleId = payload.sub;
           email = payload.email;
           name = payload.name || payload.email.split('@')[0];
         }
       } catch (verifyErr) {
-        console.warn('Standard Google token verification failed, attempting payload decode fallback:', (verifyErr as any)?.message);
-        // Fallback: If token was signed by Google but audience mismatched (e.g., deployed frontend vs backend client ID)
-        try {
-          const parts = credential.split('.');
-          if (parts.length === 3) {
-            const decoded = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-            if (decoded && decoded.email) {
-              googleId = decoded.sub || `google_${Date.now()}`;
-              email = decoded.email;
-              name = decoded.name || decoded.email.split('@')[0];
-            }
-          }
-        } catch (decodeErr) {
-          console.warn('Could not decode token fallback:', decodeErr);
-        }
+        console.warn('Google token verification failed:', (verifyErr as any)?.message);
+        return res.status(401).json({ error: 'Google sign-in could not be verified. Please try again.' });
       }
-    }
-
-    // 2. Direct Google Authentication / Deployment Fallback
-    // Guarantees zero blocking even if Google OAuth client is deleted or origins not whitelisted
-    if (!email && (isGoogleAuth || fallbackEmail || credential === 'demo-google-token')) {
-      email = fallbackEmail || (req.body.googleUser?.email);
-      name = fallbackName || (req.body.googleUser?.name) || (email ? email.split('@')[0] : 'Google User');
-      googleId = fallbackGoogleId || (email ? `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}` : `google_${Date.now()}`);
     }
 
     if (!email) {

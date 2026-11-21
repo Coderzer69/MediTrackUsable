@@ -167,3 +167,16 @@ model PatientDocument {
 
   patient   User     @relation("PatientUploadedDocuments", fields: [patientId], references: [id], onDelete: Cascade)
 }
+
+// Uploaded file contents (patient medical records, doctor verification
+// documents, avatars). Kept in the database so files survive redeploys on
+// hosts with an ephemeral filesystem (e.g. Render). Never served statically:
+// medical records are only returned through authenticated routes.
+model StoredFile {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+}

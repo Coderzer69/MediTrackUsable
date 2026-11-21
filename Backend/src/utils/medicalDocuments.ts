@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
+import { getStoredFile } from './fileStore';
 
 // ------------------------------------------------------------------ storage
 // Patient medical documents live in a PRIVATE folder that is never served as
@@ -125,20 +126,28 @@ export const toDocumentDto = (doc: StoredDocument) => ({
   createdAt: doc.createdAt,
 });
 
-// Streams a document for preview (inline) or download (attachment).
-export const sendDocumentFile = (res: Response, doc: StoredDocument, download: boolean) => {
+// Storage key used in the StoredFile table for a document.
+export const documentStorageKey = (doc: Pick<StoredDocument, 'fileUrl'>) =>
+  doc.fileUrl.startsWith(STORED_PREFIX) ? doc.fileUrl : path.basename(doc.fileUrl);
+
+// Sends a document for preview (inline) or download (attachment).
+// Reads from the database first; falls back to the local disk for files
+// uploaded before database storage existed.
+export const sendDocumentFile = async (res: Response, doc: StoredDocument, download: boolean) => {
+  const stored = await getStoredFile(documentStorageKey(doc));
   const filePath = resolveDocumentPath(doc);
-  if (!fs.existsSync(filePath)) {
+  if (!stored && !fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'The file for this record is missing on the server.' });
   }
   const type = typeForExtension(path.extname(doc.fileName)) || typeForExtension(path.extname(filePath));
   const safeName = doc.fileName.replace(/["\r\n\\]/g, '_');
-  res.setHeader('Content-Type', type?.mime || 'application/octet-stream');
+  res.setHeader('Content-Type', type?.mime || stored?.mimeType || 'application/octet-stream');
   res.setHeader(
     'Content-Disposition',
     `${download ? 'attachment' : 'inline'}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(doc.fileName)}`,
   );
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (stored) return res.end(Buffer.from(stored.data));
   return res.sendFile(filePath);
 };
