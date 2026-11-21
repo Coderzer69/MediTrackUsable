@@ -2,3 +2,8 @@
 .env.example
 .git-backup
 
+
+# Local deployment helper output
+logs/deploy-*.log
+logs/commit-message*.txt
+logs/schema-diff.sql

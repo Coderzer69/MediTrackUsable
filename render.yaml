@@ -13,8 +13,9 @@ services:
   - type: web
     name: meditrack-api-k2xy
     runtime: node
-    # Starter: always on (no cold starts on the free plan's 15-min sleep).
-    plan: starter
+    # Free plan sleeps after 15 min idle. Change to "starter" (paid, always on)
+    # once billing is set up on the Render workspace.
+    plan: free
     region: ohio
     rootDir: Backend
     branch: main
