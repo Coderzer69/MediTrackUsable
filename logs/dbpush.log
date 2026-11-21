@@ -1,0 +1,8 @@
+Syncing database schema (adds missing tables, never deletes data)... 
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-red-butterfly-ayk4ww2m-pooler.c-5.us-east-2.aws.neon.tech"
+
+Your database is now in sync with your Prisma schema. Done in 9.39s
+
+Exit code 0 

@@ -6,8 +6,17 @@ import {
   getTreatments,
   getAccessRequests,
   updateAccessRequest,
+  getDocuments,
+  uploadDocument,
+  deleteDocument,
+  downloadDocument,
+  uploadAvatar,
+  deleteAvatar,
+  getDocumentFile,
 } from '../controllers/patientController';
 import { authenticate, requireRole } from '../middlewares/authMiddleware';
+import { upload } from '../middlewares/uploadMiddleware';
+import { handleDocumentUpload } from '../utils/medicalDocuments';
 
 const router = Router();
 
@@ -15,9 +24,18 @@ router.use(authenticate, requireRole(['PATIENT']));
 
 router.get('/profile', getProfile);
 router.patch('/profile', updateProfile);
+router.post('/profile/avatar', upload.single('avatar'), uploadAvatar);
+router.delete('/profile/avatar', deleteAvatar);
 router.patch('/password', updatePassword);
 router.get('/treatments', getTreatments);
 router.get('/access-requests', getAccessRequests);
 router.patch('/access-requests/:id', updateAccessRequest);
+
+// Medical Documents & Upload routes
+router.get('/documents', getDocuments);
+router.post('/documents', handleDocumentUpload, uploadDocument);
+router.delete('/documents/:id', deleteDocument);
+router.get('/documents/:id/file', getDocumentFile); // ?download=1 to download
+router.get('/documents/:id/download', downloadDocument);
 
 export default router;

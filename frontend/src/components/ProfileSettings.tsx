@@ -2,6 +2,7 @@ import { ChevronLeft, User, Lock, Shield, HelpCircle, LogOut, ChevronRight, Copy
 import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
 
 interface ProfileSettingsProps {
@@ -12,6 +13,7 @@ interface ProfileSettingsProps {
 type Section = 'menu' | 'personal' | 'password' | 'privacy' | 'notifications' | 'help';
 
 export default function ProfileSettings({ onBack, profile }: ProfileSettingsProps) {
+  const { t } = useTranslation();
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState<Section>('menu');
@@ -59,7 +61,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setErrorMsg('New password and confirm password do not match.');
+      setErrorMsg(t('auth.passwordsDoNotMatch', 'Passwords do not match.'));
       return;
     }
     try {
@@ -92,7 +94,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           <button onClick={() => { setActiveSection('menu'); setErrorMsg(''); setSuccessMsg(''); }} className="text-emerald-700 hover:text-emerald-800">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Personal Information</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('patient.personalInfo', 'Personal Information')}</h1>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
           {errorMsg && (
@@ -109,7 +111,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           )}
           <div className="grid grid-cols-1 gap-5">
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Full Name</label>
+              <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.fullName', 'Full Name')}</label>
               <input
                 type="text"
                 value={formData.name}
@@ -118,7 +120,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
               />
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Email Address</label>
+              <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.emailLabel', 'Email address')}</label>
               <input
                 type="email"
                 value={formData.email}
@@ -133,7 +135,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
             className="mt-6 inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {loading ? 'Saving...' : 'Save Profile'}
+            {loading ? t('common.saving', 'Saving...') : t('patient.saveChanges', 'Save Changes')}
           </button>
         </div>
       </div>
@@ -147,7 +149,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           <button onClick={() => { setActiveSection('menu'); setErrorMsg(''); setSuccessMsg(''); }} className="text-emerald-700 hover:text-emerald-800">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Change Password</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('patient.changePassword', 'Change Password')}</h1>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
           {errorMsg && (
@@ -164,7 +166,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           )}
           <div className="grid grid-cols-1 gap-5">
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Current Password</label>
+              <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.currentPassword', 'Current Password')}</label>
               <input
                 type="password"
                 value={passwordForm.currentPassword}
@@ -173,7 +175,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
               />
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">New Password</label>
+              <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.newPassword', 'New Password')}</label>
               <input
                 type="password"
                 value={passwordForm.newPassword}
@@ -182,7 +184,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
               />
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Confirm New Password</label>
+              <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.confirmNewPassword', 'Confirm New Password')}</label>
               <input
                 type="password"
                 value={passwordForm.confirmPassword}
@@ -197,7 +199,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
             className="mt-6 inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-            {loading ? 'Updating...' : 'Update Password'}
+            {loading ? t('common.saving', 'Updating...') : t('patient.updatePassword', 'Update Password')}
           </button>
         </div>
       </div>
@@ -214,9 +216,9 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           <h1 className="text-2xl font-bold text-gray-900 capitalize">{activeSection} Settings</h1>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 text-center py-16">
-          <p className="text-gray-600 font-semibold mb-1">MediTrack Data Protection</p>
+          <p className="text-gray-600 font-semibold mb-1">{t('landing.heroBadge', 'MediTrack Data Protection')}</p>
           <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            Your medical records and access permissions are cryptographically verified and guarded by strict role-based access controls.
+            {t('landing.secCard1Desc', 'All clinical records and prescriptions are encrypted in transit and at rest.')}
           </p>
         </div>
       </div>
@@ -230,10 +232,11 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         <button
           onClick={onBack}
           className="text-emerald-700 hover:text-emerald-800 transition-colors"
+          aria-label={t('common.back', 'Back')}
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">Profile & Settings</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('patient.profileSettings', 'Profile & Settings')}</h1>
       </div>
 
       {/* Profile Card */}
@@ -246,14 +249,14 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
             <h2 className="text-xl font-bold text-gray-900 mb-0.5">{formData.name}</h2>
             <p className="text-sm text-gray-500 mb-2">{formData.email}</p>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 font-medium">QR Identifier:</span>
+              <span className="text-xs text-gray-400 font-medium">{t('patient.patientId', 'QR Identifier')}:</span>
               <span className="text-xs font-mono font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
                 {profile?.qrCodeIdentifier || '—'}
               </span>
               <button
                 onClick={() => profile?.qrCodeIdentifier && navigator.clipboard.writeText(profile.qrCodeIdentifier)}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
-                title="Copy Identifier"
+                title={t('common.copy', 'Copy')}
               >
                 <Copy className="w-3.5 h-3.5" />
               </button>
@@ -265,7 +268,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
           onClick={() => setActiveSection('personal')}
           className="px-5 py-2.5 bg-white border border-gray-200 text-emerald-700 font-bold text-xs rounded-xl hover:bg-emerald-50 transition-colors shadow-sm"
         >
-          Edit Profile
+          {t('common.edit', 'Edit Profile')}
         </button>
       </div>
 
@@ -277,7 +280,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         >
           <div className="flex items-center gap-3.5 text-gray-700 group-hover:text-emerald-700 transition-colors">
             <User className="w-4 h-4" />
-            <span className="font-bold text-sm">Personal Information</span>
+            <span className="font-bold text-sm">{t('patient.personalInfo', 'Personal Information')}</span>
           </div>
           <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-700 transition-colors" />
         </button>
@@ -288,7 +291,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         >
           <div className="flex items-center gap-3.5 text-gray-700 group-hover:text-emerald-700 transition-colors">
             <Lock className="w-4 h-4" />
-            <span className="font-bold text-sm">Change Password</span>
+            <span className="font-bold text-sm">{t('patient.changePassword', 'Change Password')}</span>
           </div>
           <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-700 transition-colors" />
         </button>
@@ -299,7 +302,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         >
           <div className="flex items-center gap-3.5 text-gray-700 group-hover:text-emerald-700 transition-colors">
             <Shield className="w-4 h-4" />
-            <span className="font-bold text-sm">Privacy & Security</span>
+            <span className="font-bold text-sm">{t('landing.securityTitle', 'Privacy & Security')}</span>
           </div>
           <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-700 transition-colors" />
         </button>
@@ -310,7 +313,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         >
           <div className="flex items-center gap-3.5 text-gray-700 group-hover:text-emerald-700 transition-colors">
             <HelpCircle className="w-4 h-4" />
-            <span className="font-bold text-sm">Help & Support</span>
+            <span className="font-bold text-sm">{t('nav.needHelp', 'Help & Support')}</span>
           </div>
           <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-700 transition-colors" />
         </button>
@@ -321,7 +324,7 @@ export default function ProfileSettings({ onBack, profile }: ProfileSettingsProp
         >
           <div className="flex items-center gap-3.5 text-red-600">
             <LogOut className="w-4 h-4" />
-            <span className="font-bold text-sm">Log Out</span>
+            <span className="font-bold text-sm">{t('common.logout', 'Log Out')}</span>
           </div>
         </button>
       </div>

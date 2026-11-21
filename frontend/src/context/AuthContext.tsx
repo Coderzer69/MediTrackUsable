@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../lib/api';
+import { getToken, getStoredUserRaw, setSession, setStoredUser, clearSession } from '../lib/session';
 
 type User = {
   id: string;
@@ -7,7 +8,6 @@ type User = {
   email?: string;
   role: 'ADMIN' | 'DOCTOR' | 'PATIENT';
   specialization?: string;
-  licenseNumber?: string;
   verificationStatus?: string;
   rejectionReason?: string;
   documentsSubmitted?: boolean;
@@ -27,8 +27,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
+    const storedUser = getStoredUserRaw();
+    const token = getToken();
     if (storedUser && token) {
       try {
         return JSON.parse(storedUser);
@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const refreshAuth = async (): Promise<User | null> => {
-    const token = localStorage.getItem('token');
+    const token = getToken();
     if (!token) {
       setUser(null);
       return null;
@@ -48,13 +48,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.get('/auth/me');
       const freshUser = res.data.user;
-      localStorage.setItem('user', JSON.stringify(freshUser));
+      setStoredUser(JSON.stringify(freshUser));
       setUser(freshUser);
       return freshUser;
     } catch (err: any) {
       if (err.response?.status === 401 || err.response?.status === 404) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        clearSession();
         setUser(null);
       }
       return null;
@@ -63,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Validate / refresh user token on mount
-    if (localStorage.getItem('token')) {
+    if (getToken()) {
       refreshAuth();
     }
 
@@ -71,21 +70,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
     };
 
+    const handleRoleMismatch = () => {
+      refreshAuth();
+    };
+
     window.addEventListener('auth-expired', handleAuthExpired);
+    window.addEventListener('auth-role-mismatch', handleRoleMismatch);
     return () => {
       window.removeEventListener('auth-expired', handleAuthExpired);
+      window.removeEventListener('auth-role-mismatch', handleRoleMismatch);
     };
   }, []);
 
   const login = (token: string, userData: User) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
+    setSession(token, JSON.stringify(userData));
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     setUser(null);
   };
 
@@ -94,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!currentUser) return currentUser;
 
       const updatedUser = { ...currentUser, ...userData };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setStoredUser(JSON.stringify(updatedUser));
       return updatedUser;
     });
   };

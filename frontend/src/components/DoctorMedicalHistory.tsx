@@ -1,6 +1,9 @@
 import { ChevronLeft, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
+import { withDr } from '../lib/names';
+import PatientRecordsPanel from './PatientRecordsPanel';
 
 interface DoctorMedicalHistoryProps {
   onBack: () => void;
@@ -8,6 +11,7 @@ interface DoctorMedicalHistoryProps {
 }
 
 export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalHistoryProps) {
+  const { t } = useTranslation();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,7 +39,7 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
     return (
       <div className="w-full h-full flex flex-col items-center justify-center pt-20">
         <Loader2 className="w-8 h-8 animate-spin text-[#0b5c46] mb-4" />
-        <p className="text-gray-500 font-medium">Loading medical history...</p>
+        <p className="text-gray-500 font-medium">{t('common.loading', 'Loading medical history...')}</p>
       </div>
     );
   }
@@ -48,7 +52,7 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
           className="flex items-center gap-2 text-[#0b5c46] hover:text-[#084836] transition-colors font-bold text-[15px] mb-8"
         >
           <ChevronLeft className="w-5 h-5" />
-          Back
+          {t('common.back', 'Back')}
         </button>
         <div className="bg-red-50 text-red-600 p-6 rounded-xl border border-red-100 text-center">
           {error}
@@ -66,12 +70,12 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
             className="flex items-center gap-2 text-[#0b5c46] hover:text-[#084836] transition-colors font-bold text-[15px]"
           >
             <ChevronLeft className="w-5 h-5" />
-            Back
+            {t('common.back', 'Back')}
           </button>
-          <h1 className="text-2xl font-extrabold text-gray-900">Treatment History</h1>
+          <h1 className="text-2xl font-extrabold text-gray-900">{t('patient.timeline', 'Treatment History')}</h1>
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#e6f4ef] text-[#0b5c46] rounded-full text-[13px] font-bold border border-[#0b5c46]/20">
             <CheckCircle2 className="w-4 h-4" />
-            Access Approved
+            {t('common.approved', 'Access Approved')}
           </div>
         </div>
       </div>
@@ -85,7 +89,7 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
 
       {records.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          No medical history found for this patient.
+          {t('patient.noRecordsFound', 'No medical history found for this patient.')}
         </div>
       ) : (
         <div className="bg-white border border-gray-100 rounded-2xl shadow-[0_2px_10px_rgb(0,0,0,0.02)] overflow-hidden">
@@ -110,23 +114,23 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
                 <div className="flex-1 py-8 pr-8 flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-12 mb-5">
-                      <h3 className="font-bold text-[16px] text-gray-900 w-[120px]">Dr. {record.doctor?.name || 'Unknown'}</h3>
+                      <h3 className="font-bold text-[16px] text-gray-900 w-[120px]">{withDr(record.doctor?.name, t('common.unknown', 'Unknown'))}</h3>
                       <span className="text-gray-500 font-medium text-[14.5px]">{timeStr}</span>
                     </div>
 
                     <div className="flex flex-col gap-4">
                       <div className="flex items-start gap-12">
-                        <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0">Condition</span>
+                        <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0">{t('treatment.condition', 'Condition')}</span>
                         <span className="text-[15px] font-bold text-gray-900">{record.condition || 'Not specified'}</span>
                       </div>
                       <div className="flex items-start gap-12">
-                        <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0">Diagnosis</span>
+                        <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0">{t('treatment.diagnosis', 'Diagnosis')}</span>
                         <span className="text-[15px] font-bold text-gray-900">{record.diagnosis || 'Not specified'}</span>
                       </div>
 
                       {record.prescriptions && record.prescriptions.length > 0 && (
                         <div className="flex items-start gap-12">
-                          <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0 pt-0.5">Prescriptions</span>
+                          <span className="text-[14px] font-medium text-gray-500 w-[120px] shrink-0 pt-0.5">{t('treatment.prescriptions', 'Prescriptions')}</span>
                           <div className="flex flex-col gap-3">
                             {record.prescriptions.map((prescription: any) => (
                               <div key={prescription.id}>
@@ -149,6 +153,13 @@ export default function DoctorMedicalHistory({ onBack, patient }: DoctorMedicalH
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Documents the patient uploaded (read-only for doctors) */}
+      {patient?.id && (
+        <div className="mt-6 mb-10">
+          <PatientRecordsPanel patientId={patient.id} patientName={patient?.name} />
         </div>
       )}
     </div>

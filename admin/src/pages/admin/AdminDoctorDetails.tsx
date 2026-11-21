@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, 
   Loader2, 
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api, { BACKEND_URL } from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminDoctorDetails = () => {
   const navigate = useNavigate();
@@ -40,9 +41,13 @@ const AdminDoctorDetails = () => {
   // Delete modal
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
+  // True while a live-sync reload runs, so the page does not flash a spinner.
+  const silentFetch = useRef(false);
+  const { version: syncVersion } = useLiveSyncState();
+
   const fetchDoctor = async () => {
     try {
-      setLoading(true);
+      if (!silentFetch.current) setLoading(true);
       // Try direct endpoint first
       try {
         const response = await api.get(`/admin/doctors/${id}`);
@@ -73,6 +78,15 @@ const AdminDoctorDetails = () => {
       fetchDoctor();
     }
   }, [id]);
+
+  // Reload quietly whenever the database changes.
+  useEffect(() => {
+    if (!syncVersion) return;
+    silentFetch.current = true;
+    fetchDoctor().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [syncVersion]);
 
   const showNotification = (msg: string) => {
     setActionSuccess(msg);

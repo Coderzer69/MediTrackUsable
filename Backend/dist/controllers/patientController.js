@@ -12,21 +12,45 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateAccessRequest = exports.getAccessRequests = exports.getTreatments = exports.updatePassword = exports.updateProfile = exports.getProfile = void 0;
+exports.deleteAvatar = exports.uploadAvatar = exports.downloadDocument = exports.deleteDocument = exports.uploadDocument = exports.getDocuments = exports.updateAccessRequest = exports.getAccessRequests = exports.getTreatments = exports.updatePassword = exports.updateProfile = exports.getProfile = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const auditLogger_1 = require("../utils/auditLogger");
+const qrGenerator_1 = require("../utils/qrGenerator");
 const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const userId = req.user.id;
-        const profile = yield prisma_1.default.patientProfile.findUnique({
+        let profile = yield prisma_1.default.patientProfile.findUnique({
             where: { userId },
             include: {
-                user: { select: { id: true, name: true, email: true, createdAt: true } },
+                user: { select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true } },
             },
         });
-        if (!profile)
-            return res.status(404).json({ error: 'Profile not found' });
+        // Auto-create patient profile with unique QR code if missing
+        if (!profile) {
+            let unique = false;
+            let qrCode = '';
+            while (!unique) {
+                qrCode = (0, qrGenerator_1.generatePatientQrCodeId)();
+                const existingQr = yield prisma_1.default.patientProfile.findUnique({
+                    where: { qrCodeIdentifier: qrCode },
+                });
+                if (!existingQr) {
+                    unique = true;
+                }
+            }
+            profile = yield prisma_1.default.patientProfile.create({
+                data: {
+                    userId,
+                    qrCodeIdentifier: qrCode,
+                },
+                include: {
+                    user: { select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true } },
+                },
+            });
+        }
         res.json(profile);
     }
     catch (error) {
@@ -196,3 +220,200 @@ const updateAccessRequest = (req, res) => __awaiter(void 0, void 0, void 0, func
     }
 });
 exports.updateAccessRequest = updateAccessRequest;
+const getDocuments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const patientId = req.user.id;
+        const documents = yield prisma_1.default.patientDocument.findMany({
+            where: { patientId },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(documents);
+    }
+    catch (error) {
+        console.error('Error fetching patient documents:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getDocuments = getDocuments;
+const uploadDocument = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const patientId = req.user.id;
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: 'Please select a file to upload' });
+        }
+        const { title, category } = req.body;
+        const validCategories = ['CHECKUP', 'PRESCRIPTION', 'LAB_REPORT', 'OTHER'];
+        const assignedCategory = validCategories.includes(category) ? category : 'OTHER';
+        const assignedTitle = (title && typeof title === 'string' && title.trim())
+            ? title.trim()
+            : file.originalname;
+        const fileUrl = `/uploads/${file.filename}`;
+        const newDocument = yield prisma_1.default.patientDocument.create({
+            data: {
+                patientId,
+                title: assignedTitle,
+                fileName: file.originalname,
+                fileUrl,
+                fileType: file.mimetype || path_1.default.extname(file.originalname).replace('.', ''),
+                fileSize: file.size,
+                category: assignedCategory,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(patientId, 'PATIENT_UPLOAD_DOCUMENT', req, {
+            documentId: newDocument.id,
+            fileName: file.originalname,
+            category: assignedCategory,
+            fileSize: file.size,
+        });
+        res.status(201).json(newDocument);
+    }
+    catch (error) {
+        console.error('Error uploading patient document:', error);
+        res.status(500).json({ error: 'Failed to upload document' });
+    }
+});
+exports.uploadDocument = uploadDocument;
+const deleteDocument = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const patientId = req.user.id;
+        const id = req.params.id;
+        const document = yield prisma_1.default.patientDocument.findFirst({
+            where: { id, patientId },
+        });
+        if (!document) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+        try {
+            const fileName = path_1.default.basename(document.fileUrl);
+            const filePath = path_1.default.join(__dirname, '../../uploads', fileName);
+            if (fs_1.default.existsSync(filePath)) {
+                fs_1.default.unlinkSync(filePath);
+            }
+        }
+        catch (e) {
+            console.warn('Failed to delete physical file from uploads folder:', e);
+        }
+        yield prisma_1.default.patientDocument.delete({
+            where: { id },
+        });
+        yield (0, auditLogger_1.logAudit)(patientId, 'PATIENT_DELETE_DOCUMENT', req, {
+            documentId: id,
+            fileName: document.fileName,
+        });
+        res.json({ message: 'Document deleted successfully', id });
+    }
+    catch (error) {
+        console.error('Error deleting patient document:', error);
+        res.status(500).json({ error: 'Failed to delete document' });
+    }
+});
+exports.deleteDocument = deleteDocument;
+const downloadDocument = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const patientId = req.user.id;
+        const id = req.params.id;
+        const document = yield prisma_1.default.patientDocument.findFirst({
+            where: { id, patientId },
+        });
+        if (!document) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+        const fileName = path_1.default.basename(document.fileUrl);
+        const filePath = path_1.default.join(__dirname, '../../uploads', fileName);
+        if (!fs_1.default.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Physical file not found on server' });
+        }
+        res.download(filePath, document.fileName);
+    }
+    catch (error) {
+        console.error('Error downloading document:', error);
+        res.status(500).json({ error: 'Failed to download document' });
+    }
+});
+exports.downloadDocument = downloadDocument;
+const uploadAvatar = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const userId = req.user.id;
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: 'Please select an image file to upload as your profile picture' });
+        }
+        const avatarUrl = `/uploads/${file.filename}`;
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: { avatarUrl },
+            include: {
+                patientProfile: true,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'PATIENT_UPLOAD_AVATAR', req, {
+            fileName: file.originalname,
+            avatarUrl,
+        });
+        res.json({
+            message: 'Profile image updated successfully',
+            avatarUrl,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                role: updatedUser.role,
+                avatarUrl: updatedUser.avatarUrl,
+                qrCodeIdentifier: (_a = updatedUser.patientProfile) === null || _a === void 0 ? void 0 : _a.qrCodeIdentifier,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error uploading patient avatar:', error);
+        res.status(500).json({ error: 'Failed to upload profile image' });
+    }
+});
+exports.uploadAvatar = uploadAvatar;
+const deleteAvatar = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const userId = req.user.id;
+        const user = yield prisma_1.default.user.findUnique({
+            where: { id: userId },
+            select: { avatarUrl: true },
+        });
+        if ((user === null || user === void 0 ? void 0 : user.avatarUrl) && user.avatarUrl.startsWith('/uploads/')) {
+            try {
+                const filePath = path_1.default.join(__dirname, '../../uploads', path_1.default.basename(user.avatarUrl));
+                if (fs_1.default.existsSync(filePath)) {
+                    fs_1.default.unlinkSync(filePath);
+                }
+            }
+            catch (e) {
+                console.warn('Could not delete old avatar file:', e);
+            }
+        }
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: { avatarUrl: null },
+            include: {
+                patientProfile: true,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'PATIENT_DELETE_AVATAR', req);
+        res.json({
+            message: 'Profile image removed successfully',
+            avatarUrl: null,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                role: updatedUser.role,
+                avatarUrl: null,
+                qrCodeIdentifier: (_a = updatedUser.patientProfile) === null || _a === void 0 ? void 0 : _a.qrCodeIdentifier,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error deleting patient avatar:', error);
+        res.status(500).json({ error: 'Failed to remove profile image' });
+    }
+});
+exports.deleteAvatar = deleteAvatar;

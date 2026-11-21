@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, Loader2, Lock, Save, ShieldCheck, UserRound } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,6 +13,7 @@ export default function DoctorProfileSettings({
   defaultSection = 'profile',
   onBack,
 }: DoctorProfileSettingsProps) {
+  const { t } = useTranslation();
   const { updateUser, logout } = useAuth();
   const [section, setSection] = useState<'profile' | 'settings'>(defaultSection);
   const [profile, setProfile] = useState<any>(null);
@@ -95,7 +97,7 @@ export default function DoctorProfileSettings({
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New password and confirm password do not match.');
+      setError(t('auth.passwordsDoNotMatch', 'Passwords do not match.'));
       setSuccessMessage('');
       return;
     }
@@ -134,7 +136,7 @@ export default function DoctorProfileSettings({
     return (
       <div className="w-full h-full flex flex-col items-center justify-center pt-20">
         <Loader2 className="w-8 h-8 animate-spin text-[#0b5c46] mb-4" />
-        <p className="text-gray-500 font-medium">Loading profile...</p>
+        <p className="text-gray-500 font-medium">{t('common.loading', 'Loading profile...')}</p>
       </div>
     );
   }
@@ -145,11 +147,12 @@ export default function DoctorProfileSettings({
         <button
           onClick={onBack}
           className="text-[#0b5c46] hover:text-[#084836] transition-colors"
+          aria-label={t('common.back', 'Back')}
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Doctor Profile & Settings</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('nav.profileSettings', 'Doctor Profile & Settings')}</h1>
           <p className="text-sm text-gray-500 mt-1">Manage your account details, verification info, and security settings.</p>
         </div>
       </div>
@@ -159,13 +162,13 @@ export default function DoctorProfileSettings({
           onClick={() => setSection('profile')}
           className={`px-4 py-2 rounded-xl font-bold text-sm transition-colors ${section === 'profile' ? 'bg-[#0b5c46] text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
         >
-          Profile
+          {t('patient.personalInfo', 'Profile')}
         </button>
         <button
           onClick={() => setSection('settings')}
           className={`px-4 py-2 rounded-xl font-bold text-sm transition-colors ${section === 'settings' ? 'bg-[#0b5c46] text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
         >
-          Settings
+          {t('patient.profileSettings', 'Settings')}
         </button>
       </div>
 
@@ -189,14 +192,14 @@ export default function DoctorProfileSettings({
                 <UserRound className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Personal Information</h2>
+                <h2 className="text-lg font-bold text-gray-900">{t('patient.personalInfo', 'Personal Information')}</h2>
                 <p className="text-sm text-gray-500">Update the doctor details shown across your dashboard.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="sm:col-span-2">
-                <label className="block text-sm font-bold text-gray-900 mb-2">Full Name</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.fullName', 'Full Name')}</label>
                 <input
                   type="text"
                   value={profileForm.name}
@@ -205,7 +208,7 @@ export default function DoctorProfileSettings({
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-bold text-gray-900 mb-2">Email Address</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.emailLabel', 'Email Address')}</label>
                 <input
                   type="email"
                   value={profileForm.email}
@@ -214,7 +217,7 @@ export default function DoctorProfileSettings({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">Specialization</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.specializationLabel', 'Specialization')}</label>
                 <input
                   type="text"
                   value={profileForm.specialization}
@@ -224,7 +227,7 @@ export default function DoctorProfileSettings({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">License Number</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('auth.medicalLicense', 'License Number')}</label>
                 <input
                   type="text"
                   value={profileForm.licenseNumber}
@@ -241,7 +244,7 @@ export default function DoctorProfileSettings({
               className="mt-6 inline-flex items-center gap-2 px-5 py-3 bg-[#0b5c46] text-white font-bold text-sm rounded-xl hover:bg-[#094d3a] transition-colors disabled:opacity-70"
             >
               {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {isSavingProfile ? 'Saving...' : 'Save Profile'}
+              {isSavingProfile ? t('common.saving', 'Saving...') : t('patient.saveChanges', 'Save Profile')}
             </button>
           </div>
 
@@ -257,7 +260,7 @@ export default function DoctorProfileSettings({
                 </div>
               </div>
               <div className="flex items-center justify-between py-3 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Verification Status</span>
+                <span className="text-sm text-gray-500">{t('common.status', 'Verification Status')}</span>
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${verificationBadgeClassName}`}>
                   {profile?.verificationStatus || 'INCOMPLETE'}
                 </span>
@@ -269,13 +272,13 @@ export default function DoctorProfileSettings({
                 </span>
               </div>
               <div className="flex items-center justify-between py-3 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Verification Document</span>
+                <span className="text-sm text-gray-500">{t('auth.licenseDocument', 'Verification Document')}</span>
                 <span className="text-sm font-bold text-gray-900 truncate max-w-[180px] text-right">
                   {profile?.verificationDocumentUrl || 'Not uploaded'}
                 </span>
               </div>
               <div className="flex items-center justify-between py-3 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Qualification Document</span>
+                <span className="text-sm text-gray-500">{t('auth.qualificationDocument', 'Qualification Document')}</span>
                 <span className="text-sm font-bold text-gray-900 truncate max-w-[180px] text-right">
                   {profile?.qualificationDocumentUrl || 'Not uploaded'}
                 </span>
@@ -301,14 +304,14 @@ export default function DoctorProfileSettings({
                 <Lock className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Security Settings</h2>
+                <h2 className="text-lg font-bold text-gray-900">{t('patient.changePassword', 'Security Settings')}</h2>
                 <p className="text-sm text-gray-500">Update your password to keep your doctor account secure.</p>
               </div>
             </div>
 
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">Current Password</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.currentPassword', 'Current Password')}</label>
                 <input
                   type="password"
                   value={passwordForm.currentPassword}
@@ -317,7 +320,7 @@ export default function DoctorProfileSettings({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">New Password</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.newPassword', 'New Password')}</label>
                 <input
                   type="password"
                   value={passwordForm.newPassword}
@@ -326,7 +329,7 @@ export default function DoctorProfileSettings({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">Confirm New Password</label>
+                <label className="block text-sm font-bold text-gray-900 mb-2">{t('patient.confirmNewPassword', 'Confirm New Password')}</label>
                 <input
                   type="password"
                   value={passwordForm.confirmPassword}
@@ -342,7 +345,7 @@ export default function DoctorProfileSettings({
               className="mt-6 inline-flex items-center gap-2 px-5 py-3 bg-[#0b5c46] text-white font-bold text-sm rounded-xl hover:bg-[#094d3a] transition-colors disabled:opacity-70"
             >
               {isUpdatingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-              {isUpdatingPassword ? 'Updating...' : 'Update Password'}
+              {isUpdatingPassword ? t('common.saving', 'Updating...') : t('patient.updatePassword', 'Update Password')}
             </button>
           </div>
 
@@ -351,15 +354,15 @@ export default function DoctorProfileSettings({
               <h3 className="text-lg font-bold text-gray-900 mb-4">Account Snapshot</h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Email</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">{t('auth.emailLabel', 'Email')}</p>
                   <p className="text-sm font-bold text-gray-900">{profile?.user?.email || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Role</p>
-                  <p className="text-sm font-bold text-gray-900">Doctor</p>
+                  <p className="text-sm font-bold text-gray-900">{t('common.doctor', 'Doctor')}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Specialization</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">{t('auth.specializationLabel', 'Specialization')}</p>
                   <p className="text-sm font-bold text-gray-900">{profile?.specialization || 'Not set'}</p>
                 </div>
               </div>
@@ -374,7 +377,7 @@ export default function DoctorProfileSettings({
                 onClick={logout}
                 className="px-4 py-2 bg-white border border-red-200 text-red-600 font-bold text-sm rounded-xl hover:bg-red-100 transition-colors"
               >
-                Log Out
+                {t('common.logout', 'Log Out')}
               </button>
             </div>
           </div>

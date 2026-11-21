@@ -3,17 +3,24 @@ import { Link } from 'react-router-dom';
 import { 
   Home, ClipboardList, Lock, UserCog, Headphones, 
   Bell, Copy, CalendarDays, ArrowRight, Menu, X,
-  Loader2, AlertCircle, RefreshCw
+  Loader2, AlertCircle, RefreshCw, FolderHeart
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import TreatmentDetails from '../components/TreatmentDetails';
 import ProfileSettings from '../components/ProfileSettings';
 import HistoryAccess from '../components/HistoryAccess';
 import MedicalRecords from '../components/MedicalRecords';
 import QrCodeView from '../components/QrCodeView';
+import PatientMedicalRecords from '../components/PatientMedicalRecords';
+import { withDr } from '../lib/names';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
+import AdminViewSwitcher from '../components/AdminViewSwitcher';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 
 export default function PatientDashboard() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
   const [viewingTreatment, setViewingTreatment] = useState<any>(null);
@@ -30,17 +37,28 @@ export default function PatientDashboard() {
     try {
       setLoading(true);
       setError('');
-      const [treatmentsRes, requestsRes, profileRes] = await Promise.all([
+      const [treatmentsRes, requestsRes, profileRes] = await Promise.allSettled([
         api.get('/patient/treatments'),
         api.get('/patient/access-requests'),
         api.get('/patient/profile')
       ]);
-      setTreatments(treatmentsRes.data);
-      setAccessRequests(requestsRes.data);
-      setProfile(profileRes.data);
+
+      if (treatmentsRes.status === 'fulfilled') {
+        setTreatments(treatmentsRes.value.data);
+      }
+      if (requestsRes.status === 'fulfilled') {
+        setAccessRequests(requestsRes.value.data);
+      }
+      if (profileRes.status === 'fulfilled') {
+        setProfile(profileRes.value.data);
+      } else {
+        const err = profileRes.reason;
+        console.error('Failed to fetch patient profile:', err);
+        setError(err.response?.data?.error || t('common.loading'));
+      }
     } catch (err: any) {
       console.error('Failed to fetch patient dashboard data', err);
-      setError(err.response?.data?.error || 'Failed to load your medical records. Please try again.');
+      setError(err.response?.data?.error || t('patient.noRecordsFound'));
     } finally {
       setLoading(false);
     }
@@ -52,34 +70,34 @@ export default function PatientDashboard() {
     }
   }, [activeTab]);
 
-
-
   const handleUpdateAccessRequest = async (id: string, status: 'APPROVED' | 'DENIED') => {
     try {
       await api.patch(`/patient/access-requests/${id}`, { status });
-      fetchDashboardData(); // Refresh data
+      fetchDashboardData();
     } catch (err) {
       console.error('Failed to update request', err);
       alert('Failed to update request');
     }
   };
 
-  // Time-aware greeting
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return t('common.goodMorning');
+    if (hour < 17) return t('common.goodAfternoon');
+    return t('common.goodEvening');
   };
+
   const pendingRequests = accessRequests.filter(r => r.status === 'PENDING');
   const lastTreatment = treatments[0];
   const recentPrescriptions = treatments.flatMap(t => t.prescriptions || []).slice(0, 3);
+  const activeQrId = profile?.qrCodeIdentifier || user?.qrCodeIdentifier;
 
   const navItems = [
-    { id: 'home', label: 'Home', icon: <Home className="w-[18px] h-[18px]" /> },
-    { id: 'records', label: 'My Records', icon: <ClipboardList className="w-[18px] h-[18px]" /> },
-    { id: 'history', label: 'History Access', icon: <Lock className="w-[18px] h-[18px]" /> },
-    { id: 'profile', label: 'Profile & Settings', icon: <UserCog className="w-[18px] h-[18px]" /> },
+    { id: 'home', label: t('nav.home'), icon: <Home className="w-[18px] h-[18px]" /> },
+    { id: 'records', label: t('nav.myRecords'), icon: <ClipboardList className="w-[18px] h-[18px]" /> },
+    { id: 'documents', label: 'Medical Records', icon: <FolderHeart className="w-[18px] h-[18px]" /> },
+    { id: 'history', label: t('nav.historyAccess'), icon: <Lock className="w-[18px] h-[18px]" /> },
+    { id: 'profile', label: t('nav.profileSettings'), icon: <UserCog className="w-[18px] h-[18px]" /> },
   ];
 
   const handleTabChange = (tab: string) => {
@@ -89,7 +107,6 @@ export default function PatientDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F8FAF9] flex w-full font-sans">
-      
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div 
@@ -107,15 +124,15 @@ export default function PatientDashboard() {
       `}>
         {/* Logo */}
         <div className="p-6 lg:p-8 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
             <div className="text-[#0b3b2c]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 <path d="M7.5 12h2l1.5 -3l2.5 6l1.5 -3h2.5" />
               </svg>
             </div>
-            <span className="text-[22px] font-bold text-[#0b3b2c] tracking-tight">MediTrack</span>
-          </div>
+            <span className="text-[22px] font-bold text-[#0b3b2c] tracking-tight">{t('common.appName')}</span>
+          </Link>
           <button
             className="lg:hidden p-1.5 text-gray-500 hover:text-gray-700"
             onClick={() => setSidebarOpen(false)}
@@ -129,8 +146,8 @@ export default function PatientDashboard() {
           <div className="w-[72px] h-[72px] rounded-full bg-emerald-100 flex items-center justify-center mb-3 shadow-sm border border-gray-100 text-emerald-700 text-2xl font-bold">
             {user?.name?.charAt(0) || 'P'}
           </div>
-          <h3 className="text-[17px] font-bold text-gray-900">{user?.name || 'Patient'}</h3>
-          <p className="text-[14px] text-gray-500 font-medium">Patient</p>
+          <h3 className="text-[17px] font-bold text-gray-900">{user?.name || t('common.patient')}</h3>
+          <p className="text-[14px] text-gray-500 font-medium">{t('common.patient')}</p>
         </div>
 
         {/* Nav Links */}
@@ -146,6 +163,7 @@ export default function PatientDashboard() {
               {item.label}
             </Link>
           ))}
+          <AdminViewSwitcher />
         </nav>
 
         {/* Support Section */}
@@ -155,8 +173,8 @@ export default function PatientDashboard() {
               <Headphones className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-[12px] font-medium text-gray-500 mb-0.5">Need help?</p>
-              <Link to="#" className="text-[13px] font-bold text-emerald-700 hover:text-emerald-800">Contact Support</Link>
+              <p className="text-[12px] font-medium text-gray-500 mb-0.5">{t('nav.needHelp')}</p>
+              <Link to="#" className="text-[13px] font-bold text-emerald-700 hover:text-emerald-800">{t('nav.contactSupport')}</Link>
             </div>
           </div>
         </div>
@@ -179,15 +197,18 @@ export default function PatientDashboard() {
                 <path d="M7.5 12h2l1.5 -3l2.5 6l1.5 -3h2.5" />
               </svg>
             </div>
-            <span className="text-lg font-bold text-[#0b3b2c] tracking-tight">MediTrack</span>
+            <span className="text-lg font-bold text-[#0b3b2c] tracking-tight">{t('common.appName')}</span>
           </div>
-          <div className="w-9" /> {/* Spacer for centering */}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageSwitcher />
+          </div>
         </div>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 overflow-y-auto">
           {viewingQr ? (
             <div className="max-w-[900px] mx-auto pb-10">
-              <QrCodeView onBack={() => setViewingQr(false)} qrId={profile?.qrCodeIdentifier} />
+              <QrCodeView onBack={() => setViewingQr(false)} qrId={activeQrId} />
             </div>
           ) : viewingTreatment ? (
             <div className="max-w-[900px] mx-auto">
@@ -208,6 +229,10 @@ export default function PatientDashboard() {
                 onUpdateStatus={handleUpdateAccessRequest}
               />
             </div>
+          ) : activeTab === 'documents' ? (
+            <div className="max-w-[900px] mx-auto">
+              <PatientMedicalRecords onBack={() => setActiveTab('home')} />
+            </div>
           ) : activeTab === 'records' ? (
             <div className="max-w-[900px] mx-auto">
               <MedicalRecords 
@@ -218,7 +243,6 @@ export default function PatientDashboard() {
             </div>
           ) : (
             <div className="max-w-[1000px] mx-auto">
-            
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between gap-3 text-sm text-red-700 animate-in fade-in duration-200">
                 <div className="flex items-center gap-2.5">
@@ -230,7 +254,7 @@ export default function PatientDashboard() {
                   className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1.5"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Retry
+                  {t('common.retry')}
                 </button>
               </div>
             )}
@@ -238,7 +262,7 @@ export default function PatientDashboard() {
             {loading && !profile && treatments.length === 0 ? (
               <div className="py-24 text-center text-gray-500 flex flex-col items-center justify-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-[#0b5c46]" />
-                <p className="text-sm font-medium">Loading health overview...</p>
+                <p className="text-sm font-medium">{t('patient.healthOverview')}...</p>
               </div>
             ) : (
               <>
@@ -248,11 +272,15 @@ export default function PatientDashboard() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-1 flex items-center gap-2">
                   {getGreeting()}, {user?.name} <span className="text-2xl sm:text-3xl">👋</span>
                 </h1>
-                <p className="text-gray-500 font-medium">Here's your health overview</p>
+                <p className="text-gray-500 font-medium">{t('patient.healthOverview')}</p>
               </div>
-              <button className="relative p-2.5 bg-white rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
-                <Bell className="w-[22px] h-[22px]" />
-              </button>
+              <div className="flex items-center gap-3">
+                <ThemeToggle />
+                <LanguageSwitcher />
+                <button className="relative p-2.5 bg-white rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
+                  <Bell className="w-[20px] h-[20px]" />
+                </button>
+              </div>
             </header>
 
             {/* Top Row Cards */}
@@ -263,28 +291,39 @@ export default function PatientDashboard() {
                 onClick={() => setViewingQr(true)}
                 className="bg-gradient-to-b from-[#f8fdfa] to-white rounded-2xl border border-emerald-50 p-6 sm:p-8 shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex flex-col items-center justify-center cursor-pointer hover:shadow-md transition-shadow"
               >
-                <h2 className="text-[18px] font-bold text-gray-900 mb-1">Your QR Code</h2>
-                <p className="text-[14px] text-gray-500 font-medium mb-6">Show this QR at the clinic</p>
+                <h2 className="text-[18px] font-bold text-gray-900 mb-1">{t('patient.yourQrCode')}</h2>
+                <p className="text-[14px] text-gray-500 font-medium mb-6">{t('patient.showQrAtClinic')}</p>
                 
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                  {profile?.qrCodeIdentifier && (
+                  {activeQrId ? (
                     <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${profile.qrCodeIdentifier}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(activeQrId)}`}
                       alt="QR Code" 
                       className="w-[140px] h-[140px] sm:w-[180px] sm:h-[180px] opacity-90"
                     />
+                  ) : !loading ? (
+                    <div className="w-[140px] h-[140px] sm:w-[180px] sm:h-[180px] flex items-center justify-center text-center text-[13px] text-gray-400 px-3">
+                      No QR code for this account
+                    </div>
+                  ) : (
+                    <div className="w-[140px] h-[140px] sm:w-[180px] sm:h-[180px] flex items-center justify-center text-gray-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                    </div>
                   )}
                 </div>
                 
                 <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-                  <span className="text-[14px] font-bold text-gray-900">Patient ID:</span>
-                  <span className="text-[13px] sm:text-[15px] font-bold text-gray-700 tracking-wide bg-gray-50 px-3 py-1 rounded-lg truncate max-w-[180px] sm:max-w-none">{profile?.qrCodeIdentifier || 'Loading...'}</span>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(profile?.qrCodeIdentifier || ''); }}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <Copy className="w-[18px] h-[18px]" />
-                  </button>
+                  <span className="text-[14px] font-bold text-gray-900">{t('patient.patientId')}:</span>
+                  <span className="text-[13px] sm:text-[15px] font-bold text-gray-700 tracking-wide bg-gray-50 px-3 py-1 rounded-lg truncate max-w-[180px] sm:max-w-none">{activeQrId || (loading ? t('common.loading') : '—')}</span>
+                  {activeQrId && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(activeQrId); }}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      title={t('common.copy')}
+                    >
+                      <Copy className="w-[18px] h-[18px]" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -294,24 +333,24 @@ export default function PatientDashboard() {
                 {/* Last Treatment Card */}
                 {lastTreatment ? (
                   <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-[0_4px_20px_rgb(0,0,0,0.02)]">
-                    <h3 className="text-[17px] font-bold text-gray-900 mb-3">Last Treatment</h3>
+                    <h3 className="text-[17px] font-bold text-gray-900 mb-3">{t('patient.lastTreatment')}</h3>
                     <p className="text-[13px] font-medium text-gray-500 mb-4 flex items-center gap-1.5">
                       {new Date(lastTreatment.createdAt).toLocaleDateString()}
                     </p>
                     <div className="mb-5">
-                      <h4 className="text-[15px] font-bold text-gray-900">Dr. {lastTreatment.doctor?.name || 'Unknown'}</h4>
+                      <h4 className="text-[15px] font-bold text-gray-900">{withDr(lastTreatment.doctor?.name, t('common.unknown'))}</h4>
                       <p className="text-[13.5px] text-gray-500">{lastTreatment.condition}</p>
                     </div>
                     <button 
                       onClick={() => setViewingTreatment(lastTreatment)}
-                      className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[14.5px] rounded-xl transition-colors"
+                      className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[14.5px] rounded-xl transition-colors cursor-pointer"
                     >
-                      View Details
+                      {t('common.viewDetails')}
                     </button>
                   </div>
                 ) : (
                   <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-[0_4px_20px_rgb(0,0,0,0.02)] text-center py-10">
-                    <p className="text-gray-500">No recent treatments.</p>
+                    <p className="text-gray-500">{t('patient.noRecentTreatments')}</p>
                   </div>
                 )}
 
@@ -320,7 +359,7 @@ export default function PatientDashboard() {
                   <div className="bg-[#fff9f0] rounded-2xl border border-orange-100/50 p-6 shadow-[0_4px_20px_rgb(0,0,0,0.02)] relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-orange-100/40 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
                     <div className="flex justify-between items-start mb-2 relative z-10">
-                      <h3 className="text-[16px] font-bold text-gray-900 max-w-[70%]">Pending Access Request</h3>
+                      <h3 className="text-[16px] font-bold text-gray-900 max-w-[70%]">{t('patient.pendingAccessRequests')}</h3>
                       <div className="relative">
                         <div className="w-8 h-8 rounded-full bg-orange-100/70 text-orange-600 flex items-center justify-center font-bold text-sm">
                           {pendingRequests.length}
@@ -328,14 +367,14 @@ export default function PatientDashboard() {
                       </div>
                     </div>
                     <p className="text-[13.5px] text-gray-600 font-medium mb-5 leading-relaxed max-w-[85%] relative z-10">
-                      You have {pendingRequests.length} pending request(s) to view your history.
+                      {pendingRequests.length} {t('doctor.historyRequestsTitle')}
                     </p>
                     <div className="flex justify-end relative z-10">
                       <button 
                         onClick={() => setActiveTab('history')}
-                        className="px-5 py-2 bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-[14px] rounded-xl transition-colors shadow-sm"
+                        className="px-5 py-2 bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-[14px] rounded-xl transition-colors shadow-sm cursor-pointer"
                       >
-                        Review
+                        {t('common.viewDetails')}
                       </button>
                     </div>
                   </div>
@@ -346,14 +385,13 @@ export default function PatientDashboard() {
 
             {/* Bottom Row Lists */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(280px,340px)] gap-4 sm:gap-6">
-              
               {/* Recent Treatments List */}
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-[0_4px_20px_rgb(0,0,0,0.02)]">
-                <h3 className="text-[17px] font-bold text-gray-900 mb-5">Recent Treatments</h3>
+                <h3 className="text-[17px] font-bold text-gray-900 mb-5">{t('patient.recentTreatments')}</h3>
                 
                 <div className="flex flex-col gap-4">
                   {treatments.length === 0 ? (
-                    <div className="text-gray-500 text-sm text-center py-4">No treatments found.</div>
+                    <div className="text-gray-500 text-sm text-center py-4">{t('patient.noRecentTreatments')}</div>
                   ) : (
                     treatments.slice(0, 3).map((treatment, idx) => (
                       <div key={idx} className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 py-3 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-lg px-2" onClick={() => setViewingTreatment(treatment)}>
@@ -364,7 +402,7 @@ export default function PatientDashboard() {
                           <p className="text-[14px] font-bold text-gray-900">{new Date(treatment.createdAt).toLocaleDateString()}</p>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[14.5px] font-bold text-gray-900 truncate">Dr. {treatment.doctor?.name}</p>
+                          <p className="text-[14.5px] font-bold text-gray-900 truncate">{withDr(treatment.doctor?.name)}</p>
                           <p className="text-[13px] font-medium text-gray-500 truncate">{treatment.condition}</p>
                         </div>
                         <div className="shrink-0">
@@ -380,11 +418,11 @@ export default function PatientDashboard() {
 
               {/* Recent Prescriptions List */}
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex flex-col">
-                <h3 className="text-[17px] font-bold text-gray-900 mb-5">Recent Prescriptions</h3>
+                <h3 className="text-[17px] font-bold text-gray-900 mb-5">{t('patient.recentPrescriptions')}</h3>
                 
                 <div className="flex flex-col gap-5 flex-1">
                   {recentPrescriptions.length === 0 ? (
-                    <div className="text-gray-500 text-sm text-center py-4">No recent prescriptions.</div>
+                    <div className="text-gray-500 text-sm text-center py-4">{t('patient.noRecentPrescriptions')}</div>
                   ) : (
                     recentPrescriptions.map((med: any, idx: number) => (
                       <div key={idx} className="border-b border-gray-50 pb-4">
@@ -397,12 +435,11 @@ export default function PatientDashboard() {
 
                 <button 
                   onClick={() => setActiveTab('records')}
-                  className="mt-6 flex items-center gap-1.5 text-[14px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors text-left"
+                  className="mt-6 flex items-center gap-1.5 text-[14px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors text-left cursor-pointer"
                 >
-                  View All Medicines <ArrowRight className="w-4 h-4" />
+                  {t('patient.viewAllMedicines')} <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
-              
             </div>
             </>
             )}
@@ -410,7 +447,6 @@ export default function PatientDashboard() {
           )}
         </main>
       </div>
-      
     </div>
   );
 }

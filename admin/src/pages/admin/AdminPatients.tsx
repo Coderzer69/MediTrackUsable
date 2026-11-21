@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Loader2, 
@@ -12,6 +12,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminPatients = () => {
   const [patients, setPatients] = useState<any[]>([]);
@@ -36,9 +37,13 @@ const AdminPatients = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // True while a live-sync reload runs, so the page does not flash a spinner.
+  const silentFetch = useRef(false);
+  const { version: syncVersion } = useLiveSyncState();
+
   const fetchPatients = async () => {
     try {
-      setLoading(true);
+      if (!silentFetch.current) setLoading(true);
       const response = await api.get('/admin/patients');
       setPatients(response.data);
     } catch (err: any) {
@@ -52,6 +57,15 @@ const AdminPatients = () => {
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  // Reload quietly whenever the database changes.
+  useEffect(() => {
+    if (!syncVersion) return;
+    silentFetch.current = true;
+    fetchPatients().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [syncVersion]);
 
   const showNotification = (msg: string) => {
     setActionSuccess(msg);
@@ -121,8 +135,8 @@ const AdminPatients = () => {
   const openEditModal = (pat: any) => {
     setSelectedPatient(pat);
     setFormData({
-      name: pat.name || pat.user?.name || '',
-      email: pat.email || pat.user?.email || '',
+      name: pat.name || '',
+      email: pat.email || '',
       password: '',
     });
     setFormError('');
@@ -135,9 +149,9 @@ const AdminPatients = () => {
   };
 
   const filteredPatients = patients.filter((pat: any) => {
-    const name = pat.name || pat.user?.name || '';
-    const email = pat.email || pat.user?.email || '';
-    const qr = pat.qrCodeIdentifier || pat.patientProfile?.qrCodeIdentifier || '';
+    const name = pat.name || '';
+    const email = pat.email || '';
+    const qr = pat.qrCodeIdentifier || '';
     return (
       name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -211,9 +225,9 @@ const AdminPatients = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredPatients.map((patient: any) => {
-                  const qr = patient.qrCodeIdentifier || patient.patientProfile?.qrCodeIdentifier || 'N/A';
-                  const name = patient.name || patient.user?.name || 'Unnamed';
-                  const email = patient.email || patient.user?.email || 'N/A';
+                  const qr = patient.qrCodeIdentifier || 'N/A';
+                  const name = patient.name || 'Unnamed';
+                  const email = patient.email || 'N/A';
                   return (
                     <tr key={patient.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-6 py-4">
@@ -423,7 +437,7 @@ const AdminPatients = () => {
               </button>
             </div>
             <p className="text-sm text-slate-600">
-              Are you sure you want to permanently delete patient <span className="font-semibold text-slate-900">{selectedPatient.name || selectedPatient.user?.name}</span>?
+              Are you sure you want to permanently delete patient <span className="font-semibold text-slate-900">{selectedPatient.name}</span>?
             </p>
             <div className="flex justify-end gap-3 pt-3 border-t">
               <button

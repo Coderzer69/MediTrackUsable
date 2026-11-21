@@ -1,6 +1,8 @@
 import { Eye, Plus, X, AlertCircle, CheckCircle, Loader2, Shield } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
+import { withDr } from '../lib/names';
 
 interface DoctorHistoryRequestsProps {
   requests?: any[];
@@ -9,6 +11,7 @@ interface DoctorHistoryRequestsProps {
 }
 
 export default function DoctorHistoryRequests({ requests = [], onRefresh, onViewHistory }: DoctorHistoryRequestsProps) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<'PENDING' | 'APPROVED' | 'ALL'>('ALL');
   const [showModal, setShowModal] = useState(false);
   const [patientIdInput, setPatientIdInput] = useState('');
@@ -60,7 +63,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
       setFormError('');
       setFormSuccess('');
       await api.post('/doctor/access-requests', { patientId: patientIdInput.trim() });
-      setFormSuccess('Access request sent successfully!');
+      setFormSuccess(t('doctor.requestSent', 'Access Request Sent'));
       setTimeout(() => {
         setShowModal(false);
         setFormSuccess('');
@@ -89,7 +92,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
       {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-[20px] font-bold text-gray-900 mb-5">History Requests</h2>
+          <h2 className="text-[20px] font-bold text-gray-900 mb-5">{t('doctor.historyRequestsTitle', 'Medical History Requests')}</h2>
           <div className="flex items-center gap-4 sm:gap-8 border-b border-gray-100 overflow-x-auto pb-0">
             <button 
               onClick={() => setTab('ALL')}
@@ -104,7 +107,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
               onClick={() => setTab('PENDING')}
               className={`pb-4 font-bold text-[14.5px] flex items-center gap-2 ${tab === 'PENDING' ? 'border-b-2 border-[#0b5c46] text-[#0b5c46]' : 'text-gray-500'}`}
             >
-              Pending Requests
+              {t('patient.pendingAccessRequests', 'Pending Requests')}
               <span className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${tab === 'PENDING' ? 'bg-[#e6f4ef] text-[#0b5c46]' : 'bg-gray-100 text-gray-500'}`}>
                 {pendingCount}
               </span>
@@ -113,7 +116,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
               onClick={() => setTab('APPROVED')}
               className={`pb-4 font-bold text-[14.5px] flex items-center gap-2 ${tab === 'APPROVED' ? 'border-b-2 border-[#0b5c46] text-[#0b5c46]' : 'text-gray-500'}`}
             >
-              Approved Requests
+              {t('patient.activePermissions', 'Approved Requests')}
               <span className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${tab === 'APPROVED' ? 'bg-[#e6f4ef] text-[#0b5c46]' : 'bg-gray-100 text-gray-500'}`}>
                 {approvedCount}
               </span>
@@ -126,7 +129,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
           className="self-start sm:self-auto flex items-center gap-2 px-4 py-2.5 bg-[#0b5c46] hover:bg-[#084534] text-white font-bold text-sm rounded-xl transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
-          Request Access
+          {t('doctor.requestAccess', 'Request Past History')}
         </button>
       </div>
 
@@ -134,19 +137,19 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
       <div className="hidden md:block">
         {/* Table Header */}
         <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_0.8fr_0.8fr] gap-4 py-4 border-b border-gray-100 text-[12.5px] font-bold text-gray-500">
-          <div>Patient</div>
-          <div>Requested On</div>
-          <div>Requested By</div>
+          <div>{t('common.patient', 'Patient')}</div>
+          <div>{t('common.dateAndTime', 'Requested On')}</div>
+          <div>{t('common.doctor', 'Requested By')}</div>
           <div>Reason</div>
           <div>Expires In</div>
-          <div>Status</div>
-          <div className="text-right">Actions</div>
+          <div>{t('common.status', 'Status')}</div>
+          <div className="text-right">{t('common.actions', 'Actions')}</div>
         </div>
 
         {/* Requests List — desktop */}
         <div className="flex flex-col">
           {filteredRequests.length === 0 ? (
-            <p className="text-gray-500 py-8 text-center">No requests found.</p>
+            <p className="text-gray-500 py-8 text-center">{t('patient.noPendingRequests', 'No requests found.')}</p>
           ) : (
             filteredRequests.map((req: any) => (
               <div key={req.id} className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_0.8fr_0.8fr] gap-4 py-5 border-b border-gray-50 items-center">
@@ -155,7 +158,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   {req.patient?.name?.substring(0, 2) || 'PT'}
                 </div>
                 <div>
-                  <p className="text-[14.5px] font-bold text-gray-900 mb-0.5">{req.patient?.name || 'Unknown Patient'}</p>
+                  <p className="text-[14.5px] font-bold text-gray-900 mb-0.5">{req.patient?.name || t('common.unknown', 'Unknown Patient')}</p>
                 </div>
               </div>
               <div>
@@ -167,7 +170,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                 </p>
               </div>
               <div>
-                <p className="text-[14px] font-bold text-gray-900 mb-0.5">Dr. {req.doctor?.name || 'You'}</p>
+                <p className="text-[14px] font-bold text-gray-900 mb-0.5">{withDr(req.doctor?.name, 'You')}</p>
               </div>
               <div className="text-[13px] text-gray-600 leading-relaxed max-w-[140px]">
                 {req.reason || 'Medical review'}
@@ -204,7 +207,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                     className="w-[90px] py-1.5 border border-gray-200 text-gray-700 font-bold text-[12.5px] rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    View
+                    {t('common.viewDetails', 'View')}
                   </button>
                 )}
               </div>
@@ -214,10 +217,10 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
         </div>
       </div>
 
-      {/* Mobile card layout — shown on mobile, hidden on md+ */}
+      {/* Mobile card layout */}
       <div className="md:hidden flex flex-col gap-4">
         {filteredRequests.length === 0 ? (
-          <p className="text-gray-500 py-4 text-center">No requests found.</p>
+          <p className="text-gray-500 py-4 text-center">{t('patient.noPendingRequests', 'No requests found.')}</p>
         ) : (
           filteredRequests.map((req: any) => (
             <div key={req.id} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
@@ -227,7 +230,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                     {req.patient?.name?.substring(0, 2) || 'PT'}
                   </div>
                   <div>
-                    <p className="text-[14px] font-bold text-gray-900">{req.patient?.name || 'Unknown Patient'}</p>
+                    <p className="text-[14px] font-bold text-gray-900">{req.patient?.name || t('common.unknown', 'Unknown Patient')}</p>
                     <p className="text-[12px] text-gray-500">{new Date(req.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -248,7 +251,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   className="w-full py-2 border border-gray-200 text-gray-700 font-bold text-[13px] rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 mt-1"
                 >
                   <Eye className="w-4 h-4" />
-                  View History
+                  {t('common.viewDetails', 'View')}
                 </button>
               )}
             </div>
@@ -266,13 +269,14 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   <Shield className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Request Medical History</h3>
-                  <p className="text-xs text-gray-500">Secure patient authorization required</p>
+                  <h3 className="text-base font-bold text-gray-900">{t('doctor.requestAccess', 'Request Past History')}</h3>
+                  <p className="text-xs text-gray-500">{t('doctor.requestAccessDesc', 'Ask the patient for time-limited consent to view their past medical records.')}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowModal(false)}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label={t('common.close', 'Close')}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -298,7 +302,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   Select Patient
                 </label>
                 {loadingPatients ? (
-                  <div className="text-xs text-gray-400 py-2">Loading patient directory...</div>
+                  <div className="text-xs text-gray-400 py-2">{t('common.loading', 'Loading...')}</div>
                 ) : availablePatients.length > 0 ? (
                   <select
                     value={patientIdInput}
@@ -308,7 +312,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                     <option value="">-- Choose a patient --</option>
                     {availablePatients.map((p: any) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({p.email || p.phone || p.id.substring(0, 8)})
+                        {p.name} ({p.email || p.id.substring(0, 8)})
                       </option>
                     ))}
                   </select>
@@ -343,7 +347,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2.5 border border-gray-200 text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-50 transition-colors"
                 >
-                  Cancel
+                  {t('common.cancel', 'Cancel')}
                 </button>
                 <button
                   type="submit"
@@ -351,7 +355,7 @@ export default function DoctorHistoryRequests({ requests = [], onRefresh, onView
                   className="px-5 py-2.5 bg-[#0b5c46] hover:bg-[#084534] text-white font-bold text-xs rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Send Request
+                  {t('common.submit', 'Send Request')}
                 </button>
               </div>
             </form>

@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import ThemeToggle from '../ThemeToggle';
+import LiveSyncIndicator from '../LiveSyncIndicator';
+import { LiveSyncProvider, useLiveSyncState } from '../../context/LiveSyncContext';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,7 +16,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const AdminLayout = () => {
+const AdminLayoutInner = () => {
+  const liveSync = useLiveSyncState();
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -105,8 +109,12 @@ const AdminLayout = () => {
           })}
         </nav>
 
-        {/* Logout */}
+        {/* Theme + Logout */}
         <div className="p-4 mt-auto border-t border-white/10">
+          <div className="flex items-center justify-between px-3 pb-3">
+            <LiveSyncIndicator status={liveSync.status} lastSynced={liveSync.lastSynced} tone="dark" />
+            <ThemeToggle />
+          </div>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-3 w-full rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
@@ -132,7 +140,7 @@ const AdminLayout = () => {
             <ShieldCheck className="w-6 h-6 text-emerald-600" />
             <span className="text-lg font-extrabold text-gray-900 tracking-tight">MediTrack</span>
           </div>
-          <div className="w-8"></div> {/* Spacer for centering */}
+          <ThemeToggle />
         </div>
 
         <main className="flex-1 overflow-y-auto w-full h-full p-4 md:p-6 lg:p-8">
@@ -142,5 +150,12 @@ const AdminLayout = () => {
     </div>
   );
 };
+
+// One live-sync poller for the whole admin area; pages reload when the database changes.
+const AdminLayout = () => (
+  <LiveSyncProvider>
+    <AdminLayoutInner />
+  </LiveSyncProvider>
+);
 
 export default AdminLayout;

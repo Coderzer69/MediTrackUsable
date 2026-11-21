@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Users, 
   Lock, 
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -22,9 +23,13 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // True while a live-sync reload runs, so the page does not flash a spinner.
+  const silentFetch = useRef(false);
+  const { version: syncVersion } = useLiveSyncState();
+
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
+      if (!silentFetch.current) setLoading(true);
       setError('');
       const [statsRes, doctorsRes, treatmentsRes] = await Promise.all([
         api.get('/admin/dashboard-stats'),
@@ -49,6 +54,15 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  // Reload quietly whenever the database changes.
+  useEffect(() => {
+    if (!syncVersion) return;
+    silentFetch.current = true;
+    fetchDashboardData().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [syncVersion]);
 
   if (loading) {
     return (

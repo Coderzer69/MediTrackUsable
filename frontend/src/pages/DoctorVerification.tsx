@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { getToken } from '../lib/session';
+import { canUseDoctorFeatures } from '../lib/access';
+import { ISSUING_AUTHORITIES, SPECIALIZATIONS, QUALIFICATIONS } from '../lib/doctorOptions';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Bell, ChevronDown,
@@ -8,6 +11,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
+import { withDr } from '../lib/names';
 
 export default function DoctorVerification() {
   const navigate = useNavigate();
@@ -17,7 +23,7 @@ export default function DoctorVerification() {
   const [resubmitting, setResubmitting] = useState(false);
 
   useEffect(() => {
-    if (user?.verificationStatus === 'APPROVED') {
+    if (canUseDoctorFeatures(user)) {
       navigate('/doctor/dashboard');
     }
   }, [user, navigate]);
@@ -26,7 +32,7 @@ export default function DoctorVerification() {
     setCheckingStatus(true);
     try {
       const updated = await refreshAuth();
-      if (updated?.verificationStatus === 'APPROVED') {
+      if (canUseDoctorFeatures(updated)) {
         navigate('/doctor/dashboard');
       }
     } finally {
@@ -94,7 +100,7 @@ export default function DoctorVerification() {
       // Update local storage context to reflect submitted state
       if (user) {
         const updatedUser = { ...user, verificationStatus: 'PENDING', documentsSubmitted: true };
-        const token = localStorage.getItem('token') || '';
+        const token = getToken() || '';
         login(token, updatedUser);
       }
 
@@ -259,7 +265,9 @@ export default function DoctorVerification() {
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <ThemeToggle />
+            <LanguageSwitcher />
             <button className="relative text-gray-500 hover:text-gray-700 transition-colors">
               <Bell className="w-6 h-6" />
             </button>
@@ -269,7 +277,7 @@ export default function DoctorVerification() {
                 {user?.name?.charAt(0) || 'D'}
               </div>
               <div className="hidden sm:block">
-                <div className="text-[14px] font-bold text-gray-900 leading-tight">Dr. {user?.name || 'User'}</div>
+                <div className="text-[14px] font-bold text-gray-900 leading-tight">{withDr(user?.name, 'User')}</div>
                 <div className="text-[12px] font-medium text-gray-500">{user?.specialization || 'Doctor'}</div>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -381,8 +389,9 @@ export default function DoctorVerification() {
                           onChange={handleInputChange}
                           className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-gray-200 text-[14.5px] text-gray-800 focus:outline-none focus:border-emerald-500 appearance-none bg-white"
                         >
-                          <option value="Kerala Medical Council">Kerala Medical Council</option>
-                          <option value="Medical Council of India">Medical Council of India</option>
+                          {ISSUING_AUTHORITIES.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                       </div>
@@ -418,10 +427,9 @@ export default function DoctorVerification() {
                           onChange={handleInputChange}
                           className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-gray-200 text-[14.5px] text-gray-800 focus:outline-none focus:border-emerald-500 appearance-none bg-white"
                         >
-                          <option value="General Medicine">General Medicine</option>
-                          <option value="Cardiology">Cardiology</option>
-                          <option value="Pediatrics">Pediatrics</option>
-                          <option value="Orthopedics">Orthopedics</option>
+                          {SPECIALIZATIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                       </div>
@@ -438,9 +446,9 @@ export default function DoctorVerification() {
                           onChange={handleInputChange}
                           className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-gray-200 text-[14.5px] text-gray-800 focus:outline-none focus:border-emerald-500 appearance-none bg-white"
                         >
-                          <option value="MBBS">MBBS</option>
-                          <option value="MD">MD</option>
-                          <option value="MS">MS</option>
+                          {QUALIFICATIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
                         </select>
                         <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                       </div>

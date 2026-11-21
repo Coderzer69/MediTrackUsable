@@ -1,0 +1,94 @@
+/* ------------------------------------------------------------------
+   Light / dark theme
+   - The `dark` class on <html> switches the whole app to dark mode.
+   - Per-class dark colors live in theme-dark.generated.css (generated).
+   - `dark:` utilities also work and always take priority.
+   ------------------------------------------------------------------ */
+
+/* `html.dark` inside :is() raises specificity so explicit dark: classes
+   always beat the generated overrides. */
+@custom-variant dark (&:is(html.dark *));
+
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: oklch(17% 0.008 165);
+  color: oklch(93% 0.005 165);
+}
+
+/* Smooth colour change only while the theme is being switched,
+   so normal interactions are not slowed down. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 280ms ease, border-color 280ms ease, color 280ms ease,
+    fill 280ms ease, stroke 280ms ease !important;
+  transition-delay: 0ms !important;
+}
+
+/* Images that are mostly white (logos, QR codes) stay readable in dark mode. */
+html.dark img[src*='qrserver'],
+html.dark .keep-light {
+  background-color: #fff;
+  border-radius: 0.5rem;
+}
+
+/* Softer shadows on dark surfaces. */
+html.dark [class*='shadow'] {
+  --tw-shadow-color: rgb(0 0 0 / 0.35);
+}
+
+html.dark ::selection {
+  background-color: oklch(45% 0.09 165);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------
+   Motion: short, calm transitions. All disabled for reduced motion.
+   ------------------------------------------------------------------ */
+@theme {
+  --animate-fade-up: fade-up 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade-in: fade-in 220ms ease-out both;
+  --animate-scale-in: scale-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-grow-x: grow-x 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes grow-x {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

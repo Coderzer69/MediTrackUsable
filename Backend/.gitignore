@@ -1,2 +1,4 @@
 .env
 node_modules
+# Patient medical records (private, never commit)
+private-uploads/

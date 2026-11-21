@@ -1,0 +1,8 @@
+{
+  "registered": 201,
+  "loginStatus": 200,
+  "loginVerificationStatus": "INCOMPLETE",
+  "storedVerificationStatus": "INCOMPLETE",
+  "storedLicenseNumber": null
+}
+cleanup: test account deleted

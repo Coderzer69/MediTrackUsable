@@ -1,0 +1,22 @@
+{
+  "patientSignupWithDoctorGoogle": {
+    "status": 409,
+    "gotToken": false,
+    "message": "This Google account (surgeprime85@gmail.com) is already registered as a doctor. Use \"Log in\" to open that account, or choose a different Google account to sign up as a patient."
+  },
+  "doctorSignupWithPatientGoogle": {
+    "status": 409,
+    "gotToken": false
+  },
+  "patientStillPatient": "PATIENT",
+  "emailPatientSignup": {
+    "register": 201,
+    "role": "PATIENT",
+    "hasQr": true
+  },
+  "duplicateEmail": {
+    "status": 409,
+    "message": "An account with this email already exists. Please log in instead."
+  },
+  "cleanupDeleted": 200
+}

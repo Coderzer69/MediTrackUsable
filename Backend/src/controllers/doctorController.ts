@@ -1,13 +1,24 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import path from 'path';
+import fs from 'fs';
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { TreatmentStatus } from '@prisma/client';
 import OpenAI from 'openai';
 import { logAudit } from '../utils/auditLogger';
+import { sendDocumentFile, toDocumentDto } from '../utils/medicalDocuments';
 
-// Helper to check if doctor is verified
+// ADMIN is a superuser: full access to every doctor route and all underlying data.
+const isAdminRequest = (req: AuthRequest) => req.user?.role === 'ADMIN';
+
+// Records scoped to the calling doctor; ADMIN sees every doctor's records.
+const doctorScope = (req: AuthRequest) => (isAdminRequest(req) ? {} : { doctorId: req.user!.id });
+
+// Helper to check if doctor is verified (or ADMIN)
 const isDoctorVerified = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role === 'ADMIN') return true;
   const profile = await prisma.doctorProfile.findUnique({ where: { userId } });
   return profile?.verificationStatus === 'APPROVED';
 };
@@ -15,7 +26,7 @@ const isDoctorVerified = async (userId: string) => {
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const profile = await prisma.doctorProfile.findUnique({
+    let profile = await prisma.doctorProfile.findUnique({
       where: { userId },
       include: {
         user: {
@@ -23,14 +34,49 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
             id: true,
             name: true,
             email: true,
+            avatarUrl: true,
             createdAt: true,
           },
         },
       },
     });
 
+    if (!profile && isAdminRequest(req)) {
+      // Admins have no doctor profile; return a read-only view instead of creating one.
+      const adminUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true },
+      });
+      return res.json({
+        id: null,
+        userId,
+        specialization: 'Administrator',
+        licenseNumber: null,
+        verificationStatus: 'APPROVED',
+        user: adminUser,
+      });
+    }
+
     if (!profile) {
-      return res.status(404).json({ error: 'Profile not found' });
+      profile = await prisma.doctorProfile.create({
+        data: {
+          userId,
+          // A doctor whose profile is missing must verify again: never auto-approve,
+          // and never invent a license number. They are sent to the verification form.
+          verificationStatus: 'INCOMPLETE',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
     }
 
     res.json(profile);
@@ -74,6 +120,19 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (isAdminRequest(req)) {
+      // Admins have no doctor profile row: update the account details only.
+      const adminUser = await prisma.user.update({
+        where: { id: userId },
+        data: { name: name.trim(), email: email.trim().toLowerCase() },
+        select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true },
+      });
+      return res.json({
+        message: 'Profile updated successfully',
+        profile: { id: null, userId, specialization: 'Administrator', licenseNumber: null, verificationStatus: 'APPROVED', user: adminUser },
+      });
+    }
+
     const updatedProfile = await prisma.$transaction(async (prismaTx: any) => {
       await prismaTx.user.update({
         where: { id: userId },
@@ -95,6 +154,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
               id: true,
               name: true,
               email: true,
+              avatarUrl: true,
               createdAt: true,
             },
           },
@@ -151,11 +211,10 @@ export const updatePassword = async (req: AuthRequest, res: Response) => {
 
 export const getPatients = async (req: AuthRequest, res: Response) => {
   try {
-    const doctorId = req.user!.id;
 
     // Get patients from treatments
     const treatments = await prisma.treatment.findMany({
-      where: { doctorId },
+      where: doctorScope(req),
       include: {
         patient: { select: { id: true, name: true, email: true } },
       },
@@ -163,7 +222,7 @@ export const getPatients = async (req: AuthRequest, res: Response) => {
 
     // Get patients from access requests (approved or pending)
     const accessRequests = await prisma.historyAccessRequest.findMany({
-      where: { doctorId },
+      where: doctorScope(req),
       include: {
         patient: { select: { id: true, name: true, email: true } },
       },
@@ -198,6 +257,19 @@ export const getPatients = async (req: AuthRequest, res: Response) => {
       }
     });
 
+    // Admin sees every patient, including those with no treatments or requests yet
+    if (isAdminRequest(req)) {
+      const allPatients = await prisma.user.findMany({
+        where: { role: 'PATIENT' },
+        select: { id: true, name: true, email: true },
+      });
+      allPatients.forEach((p) => {
+        if (!patientMap.has(p.id)) {
+          patientMap.set(p.id, { ...p, treatmentsCount: 0, lastVisit: null });
+        }
+      });
+    }
+
     // Get the patient profile for each patient to include QR code identifier
     const patients = Array.from(patientMap.values());
     const patientsWithProfile = await Promise.all(
@@ -219,9 +291,8 @@ export const getPatients = async (req: AuthRequest, res: Response) => {
 
 export const getTreatments = async (req: AuthRequest, res: Response) => {
   try {
-    const doctorId = req.user!.id;
     const treatments = await prisma.treatment.findMany({
-      where: { doctorId },
+      where: doctorScope(req),
       include: {
         patient: {
           select: {
@@ -244,9 +315,8 @@ export const getTreatments = async (req: AuthRequest, res: Response) => {
 
 export const getAccessRequests = async (req: AuthRequest, res: Response) => {
   try {
-    const doctorId = req.user!.id;
     const requests = await prisma.historyAccessRequest.findMany({
-      where: { doctorId },
+      where: doctorScope(req),
       include: {
         patient: { select: { id: true, name: true, email: true } },
       },
@@ -275,16 +345,33 @@ export const getAccessRequests = async (req: AuthRequest, res: Response) => {
 
 export const scanPatientQr = async (req: AuthRequest, res: Response) => {
   try {
-    const qrId = req.params.qrId as string;
-    const patientProfile = await prisma.patientProfile.findUnique({
-      where: { qrCodeIdentifier: qrId },
+    const rawQrId = req.params.qrId as string;
+    const cleanQrId = decodeURIComponent(rawQrId || '').trim();
+
+    // Extract ID if a full URL or query was scanned
+    let qrId = cleanQrId;
+    if (qrId.includes('data=')) {
+      qrId = qrId.split('data=')[1].split('&')[0].trim();
+    } else if (qrId.includes('/')) {
+      qrId = qrId.split('/').pop()?.trim() || qrId;
+    }
+
+    const patientProfile = await prisma.patientProfile.findFirst({
+      where: {
+        OR: [
+          { qrCodeIdentifier: qrId },
+          { qrCodeIdentifier: cleanQrId },
+          { userId: qrId },
+          { user: { email: { equals: qrId, mode: 'insensitive' } } },
+        ],
+      },
       include: {
         user: { select: { id: true, name: true, email: true } },
       },
     });
 
     if (!patientProfile) {
-      return res.status(404).json({ error: 'Patient not found for this QR code' });
+      return res.status(404).json({ error: 'Patient not found for this QR code / ID' });
     }
 
     if (req.user?.id) {
@@ -296,11 +383,9 @@ export const scanPatientQr = async (req: AuthRequest, res: Response) => {
 
     res.json({
       id: patientProfile.user.id,
-      patientId: patientProfile.user.id,
       name: patientProfile.user.name,
       email: patientProfile.user.email,
-      qrId: patientProfile.qrCodeIdentifier,
-      qrIdentifier: patientProfile.qrCodeIdentifier
+      qrCodeIdentifier: patientProfile.qrCodeIdentifier,
     });
   } catch (error) {
     console.error('Error scanning QR:', error);
@@ -393,31 +478,125 @@ export const getPatientHistory = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    if (!access) {
+    if (!access && !isAdminRequest(req)) {
       return res.status(403).json({ error: 'You do not have active permission to view this patient\'s history' });
     }
 
     // Log the access using unified auditLogger
     await logAudit(doctorId, 'VIEWED_PATIENT_HISTORY', req, { patientId });
 
-    const treatments = await prisma.treatment.findMany({
-      where: { patientId, status: 'CONFIRMED' },
-      include: {
-        doctor: { select: { name: true } },
-        prescriptions: true,
-        amendments: true,
-      },
-      orderBy: { confirmedAt: 'desc' },
-    });
+    const [treatments, documents] = await Promise.all([
+      prisma.treatment.findMany({
+        where: { patientId, status: 'CONFIRMED' },
+        include: {
+          doctor: { select: { name: true } },
+          prescriptions: true,
+          amendments: true,
+        },
+        orderBy: { confirmedAt: 'desc' },
+      }),
+      prisma.patientDocument.findMany({
+        where: { patientId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
-    res.json(treatments);
+    res.json({ treatments, documents: documents.map(toDocumentDto) });
   } catch (error) {
     console.error('Error fetching patient history:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-// Helper to validate and normalize consultation draft output
+export const getPatientDocuments = async (req: AuthRequest, res: Response) => {
+  try {
+    const doctorId = req.user!.id;
+    const patientId = req.params.id as string;
+
+    if (!(await isDoctorVerified(doctorId))) {
+      return res.status(403).json({ error: 'Only verified doctors can view patient documents' });
+    }
+
+    const access = await prisma.historyAccessRequest.findFirst({
+      where: {
+        doctorId,
+        patientId,
+        status: 'APPROVED',
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!access && !isAdminRequest(req)) {
+      return res.status(403).json({ error: 'Active patient permission is required to view documents' });
+    }
+
+    await logAudit(doctorId, 'VIEWED_PATIENT_DOCUMENTS', req, { patientId });
+
+    const documents = await prisma.patientDocument.findMany({
+      where: { patientId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(documents.map(toDocumentDto));
+  } catch (error) {
+    console.error('Error fetching patient documents for doctor:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Read-only access for doctors: preview or download a patient's uploaded record.
+// Requires an approved, unexpired history-access request (or ADMIN).
+const servePatientDocumentForDoctor = async (req: AuthRequest, res: Response, download: boolean) => {
+  try {
+    const doctorId = req.user!.id;
+    const patientId = req.params.patientId as string;
+    const documentId = req.params.documentId as string;
+
+    if (!(await isDoctorVerified(doctorId))) {
+      return res.status(403).json({ error: 'Only verified doctors can open patient documents' });
+    }
+
+    const access = await prisma.historyAccessRequest.findFirst({
+      where: {
+        doctorId,
+        patientId,
+        status: 'APPROVED',
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!access && !isAdminRequest(req)) {
+      return res.status(403).json({ error: 'Active patient permission is required' });
+    }
+
+    const document = await prisma.patientDocument.findFirst({
+      where: { id: documentId, patientId },
+    });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    await logAudit(doctorId, download ? 'DOCTOR_DOWNLOAD_PATIENT_DOCUMENT' : 'DOCTOR_VIEW_PATIENT_DOCUMENT', req, {
+      patientId,
+      documentId,
+    });
+
+    return sendDocumentFile(res, document, download);
+  } catch (error) {
+    console.error('Error sending patient document to doctor:', error);
+    res.status(500).json({ error: 'Failed to open document' });
+  }
+};
+
+// GET /patient/:patientId/documents/:documentId/file             -> preview
+// GET /patient/:patientId/documents/:documentId/file?download=1  -> download
+export const getPatientDocumentFileForDoctor = (req: AuthRequest, res: Response) =>
+  servePatientDocumentForDoctor(req, res, req.query.download !== undefined);
+
+export const downloadPatientDocumentForDoctor = (req: AuthRequest, res: Response) =>
+  servePatientDocumentForDoctor(req, res, true);
+
 const validateAndNormalizeConsultation = (raw: any) => {
   if (!raw || typeof raw !== 'object') {
     throw new Error('Invalid consultation draft output: expected JSON object');
@@ -653,7 +832,7 @@ export const editTreatment = async (req: AuthRequest, res: Response) => {
     });
 
     if (!existingTreatment) return res.status(404).json({ error: 'Treatment not found' });
-    if (existingTreatment.doctorId !== doctorId) return res.status(403).json({ error: 'Not authorized to edit this treatment' });
+    if (existingTreatment.doctorId !== doctorId && !isAdminRequest(req)) return res.status(403).json({ error: 'Not authorized to edit this treatment' });
 
     if (existingTreatment.status === 'CONFIRMED') {
       if (!amendmentReason) {
@@ -757,5 +936,99 @@ export const submitVerification = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error submitting verification:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const uploadAvatar = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'Please select an image file to upload as your profile picture' });
+    }
+
+    const avatarUrl = `/uploads/${file.filename}`;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+      include: {
+        doctorProfile: true,
+      },
+    });
+
+    await logAudit(userId, 'DOCTOR_UPLOAD_AVATAR', req, {
+      fileName: file.originalname,
+      avatarUrl,
+    });
+
+    res.json({
+      message: 'Profile image updated successfully',
+      avatarUrl,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        avatarUrl: updatedUser.avatarUrl,
+        specialization: updatedUser.doctorProfile?.specialization,
+        licenseNumber: updatedUser.doctorProfile?.licenseNumber,
+        verificationStatus: updatedUser.doctorProfile?.verificationStatus,
+      },
+    });
+  } catch (error) {
+    console.error('Error uploading doctor avatar:', error);
+    res.status(500).json({ error: 'Failed to upload profile image' });
+  }
+};
+
+export const deleteAvatar = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+
+    if (user?.avatarUrl && user.avatarUrl.startsWith('/uploads/')) {
+      try {
+        const filePath = path.join(__dirname, '../../uploads', path.basename(user.avatarUrl));
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        console.warn('Could not delete old avatar file:', e);
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: null },
+      include: {
+        doctorProfile: true,
+      },
+    });
+
+    await logAudit(userId, 'DOCTOR_DELETE_AVATAR', req);
+
+    res.json({
+      message: 'Profile image removed successfully',
+      avatarUrl: null,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        avatarUrl: null,
+        specialization: updatedUser.doctorProfile?.specialization,
+        licenseNumber: updatedUser.doctorProfile?.licenseNumber,
+        verificationStatus: updatedUser.doctorProfile?.verificationStatus,
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting doctor avatar:', error);
+    res.status(500).json({ error: 'Failed to remove profile image' });
   }
 };

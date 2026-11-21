@@ -1,9 +1,20 @@
 import { Link } from 'react-router-dom';
 import { Stethoscope, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function RoleSelection() {
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-screen bg-[#F8FAF9] flex flex-col items-center justify-center relative overflow-hidden font-sans py-12 sm:py-0">
+      {/* Top right language switcher */}
+      <div className="absolute top-5 right-6 z-30 flex items-center gap-3">
+        <ThemeToggle />
+        <LanguageSwitcher />
+      </div>
+
       {/* Background decorations */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-50 rounded-full blur-[100px] opacity-70"></div>
       <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] bg-emerald-50 rounded-full blur-[100px] opacity-70"></div>
@@ -13,7 +24,7 @@ export default function RoleSelection() {
 
       <div className="relative z-10 flex flex-col items-center w-full max-w-3xl px-4 pt-10 sm:pt-0">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-10">
+        <Link to="/" className="flex flex-col items-center mb-10 group">
           <div className="flex items-center gap-2">
             <div className="text-[#0b3b2c]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10">
@@ -21,15 +32,19 @@ export default function RoleSelection() {
                 <path d="M7.5 12h2l1.5 -3l2.5 6l1.5 -3h2.5" />
               </svg>
             </div>
-            <span className="text-3xl font-bold text-[#0b3b2c] tracking-tight">MediTrack</span>
+            <span className="text-3xl font-bold text-[#0b3b2c] tracking-tight">{t('common.appName')}</span>
           </div>
-          <span className="text-[14px] text-gray-500 font-medium mt-1">Digital care. Smart records.</span>
-        </div>
+          <span className="text-[14px] text-gray-500 font-medium mt-1">{t('common.tagline')}</span>
+        </Link>
 
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-[28px] sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">Welcome to MediTrack</h1>
-          <p className="text-gray-500 font-medium text-[15px] sm:text-[16px]">Choose how you want to continue</p>
+          <h1 className="text-[28px] sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
+            {t('common.appName')}
+          </h1>
+          <p className="text-gray-500 font-medium text-[15px] sm:text-[16px]">
+            {t('auth.chooseRole')}
+          </p>
         </div>
 
         {/* Cards */}
@@ -41,9 +56,11 @@ export default function RoleSelection() {
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
             </div>
-            <h2 className="text-[16px] sm:text-[22px] font-bold text-[#0b3b2c] mb-2 sm:mb-3">I'm a Patient</h2>
+            <h2 className="text-[16px] sm:text-[22px] font-bold text-[#0b3b2c] mb-2 sm:mb-3">
+              {t('auth.patientRole')}
+            </h2>
             <p className="hidden sm:block text-gray-500 text-[14.5px] leading-relaxed mb-8 max-w-[200px]">
-              Access your health records, book appointments and more.
+              {t('auth.patientRoleDesc')}
             </p>
             <div className="mt-auto w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-gray-200 flex items-center justify-center group-hover:border-emerald-300 group-hover:bg-emerald-50 transition-colors">
               <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-[#0b3b2c]" />
@@ -55,9 +72,11 @@ export default function RoleSelection() {
             <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full bg-[#f0fdf7] flex items-center justify-center mb-4 sm:mb-6 group-hover:scale-110 transition-transform duration-300 sm:mt-2">
               <Stethoscope className="w-8 h-8 sm:w-12 sm:h-12 text-[#0b3b2c]" strokeWidth={2.2} />
             </div>
-            <h2 className="text-[16px] sm:text-[22px] font-bold text-[#0b3b2c] mb-2 sm:mb-3">I'm a Doctor</h2>
+            <h2 className="text-[16px] sm:text-[22px] font-bold text-[#0b3b2c] mb-2 sm:mb-3">
+              {t('auth.doctorRole')}
+            </h2>
             <p className="hidden sm:block text-gray-500 text-[14.5px] leading-relaxed mb-8 max-w-[200px]">
-              Manage your patients, treatments and prescriptions.
+              {t('auth.doctorRoleDesc')}
             </p>
             <div className="mt-auto w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-gray-200 flex items-center justify-center group-hover:border-emerald-300 group-hover:bg-emerald-50 transition-colors">
               <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-[#0b3b2c]" />
@@ -67,9 +86,9 @@ export default function RoleSelection() {
 
         {/* Existing user login link */}
         <div className="mt-8 text-center text-[14px] text-gray-500 font-medium">
-          Already have an account?{' '}
+          {t('auth.alreadyHaveAccount')}{' '}
           <Link to="/login" className="text-emerald-700 hover:text-emerald-800 font-bold hover:underline">
-            Log in here
+            {t('nav.login')}
           </Link>
         </div>
       </div>

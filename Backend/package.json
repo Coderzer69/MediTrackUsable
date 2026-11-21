@@ -1,12 +1,13 @@
 {
   "name": "sih-project-2026",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "MediTrack Backend Service",
+  "main": "dist/server.js",
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
+    "vercel-build": "prisma generate && tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

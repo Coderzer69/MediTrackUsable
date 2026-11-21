@@ -39,6 +39,7 @@ model User {
   passwordHash String?  // Optional because OAuth users might not have a password
   name         String
   role         Role
+  avatarUrl    String?
   oauthId      String?  @unique // To link OAuth accounts
   oauthProvider String? // 'google', 'apple', etc.
   createdAt    DateTime @default(now())
@@ -55,6 +56,7 @@ model User {
   accessRequestsSent          HistoryAccessRequest[]        @relation("DoctorAccessRequests")
   auditLogs                   AuditLog[]
   verifiedDoctors             DoctorProfile[]               @relation("AdminVerifiedDoctors")
+  patientDocuments            PatientDocument[]             @relation("PatientUploadedDocuments")
 }
 
 model DoctorProfile {
@@ -149,4 +151,19 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PatientDocument {
+  id        String   @id @default(uuid())
+  patientId String
+  title     String
+  fileName  String
+  fileUrl   String
+  fileType  String
+  fileSize  Int
+  category  String   @default("OTHER") // "CHECKUP", "PRESCRIPTION", "LAB_REPORT", "OTHER"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient   User     @relation("PatientUploadedDocuments", fields: [patientId], references: [id], onDelete: Cascade)
 }

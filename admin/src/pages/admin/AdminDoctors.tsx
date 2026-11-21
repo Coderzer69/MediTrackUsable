@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Loader2, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminDoctors = () => {
   const navigate = useNavigate();
@@ -44,9 +45,13 @@ const AdminDoctors = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // True while a live-sync reload runs, so the page does not flash a spinner.
+  const silentFetch = useRef(false);
+  const { version: syncVersion } = useLiveSyncState();
+
   const fetchDoctors = async () => {
     try {
-      setLoading(true);
+      if (!silentFetch.current) setLoading(true);
       const response = await api.get('/admin/doctors');
       setDoctors(response.data || []);
     } catch (err: any) {
@@ -60,6 +65,15 @@ const AdminDoctors = () => {
   useEffect(() => {
     fetchDoctors();
   }, []);
+
+  // Reload quietly whenever the database changes.
+  useEffect(() => {
+    if (!syncVersion) return;
+    silentFetch.current = true;
+    fetchDoctors().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [syncVersion]);
 
   const handleSuspend = async (docId: string) => {
     try {

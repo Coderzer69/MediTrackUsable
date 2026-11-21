@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Loader2, 
@@ -12,6 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminTreatments = () => {
   const [treatments, setTreatments] = useState<any[]>([]);
@@ -22,9 +23,13 @@ const AdminTreatments = () => {
   const [selectedTreatment, setSelectedTreatment] = useState<any>(null);
   const [modalLoading, setModalLoading] = useState(false);
 
+  // True while a live-sync reload runs, so the page does not flash a spinner.
+  const silentFetch = useRef(false);
+  const { version: syncVersion } = useLiveSyncState();
+
   const fetchTreatments = async () => {
     try {
-      setLoading(true);
+      if (!silentFetch.current) setLoading(true);
       const response = await api.get('/admin/treatments');
       setTreatments(response.data);
     } catch (err: any) {
@@ -38,6 +43,15 @@ const AdminTreatments = () => {
   useEffect(() => {
     fetchTreatments();
   }, []);
+
+  // Reload quietly whenever the database changes.
+  useEffect(() => {
+    if (!syncVersion) return;
+    silentFetch.current = true;
+    fetchTreatments().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [syncVersion]);
 
   const handleOpenDetails = async (treatment: any) => {
     setSelectedTreatment(treatment);
@@ -278,7 +292,7 @@ const AdminTreatments = () => {
               ) : prescriptions.length > 0 ? (
                 <div className="space-y-3">
                   {prescriptions.map((p: any, idx: number) => {
-                    const medName = p.medicineName || p.medication || p.name || 'Unnamed Medicine';
+                    const medName = p.medicineName || 'Unnamed Medicine';
                     return (
                       <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">

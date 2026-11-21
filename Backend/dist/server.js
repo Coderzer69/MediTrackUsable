@@ -83,11 +83,24 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
     console.error('Unhandled server error:', err);
+    if (res.headersSent) {
+        return next(err);
+    }
     res.status(err.status || 500).json({
         error: err.message || 'Internal Server Error',
     });
 });
-const server = app.listen(port, () => {
-    console.log(`Server is running on port ${port} (http://localhost:${port})`);
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
 });
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Rejection:', reason);
+});
+// Start the server for standalone runtimes (local dev, Render, Railway, Docker, etc.)
+// When deployed on Vercel, Vercel exports the Express app as a serverless function.
+if (!process.env.VERCEL) {
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port} (http://localhost:${port})`);
+    });
+}
 exports.default = app;

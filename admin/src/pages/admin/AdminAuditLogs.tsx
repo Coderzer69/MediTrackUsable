@@ -8,6 +8,7 @@ import {
   X 
 } from 'lucide-react';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminAuditLogs = () => {
   const [logs, setLogs] = useState<any[]>([]);
@@ -17,10 +18,12 @@ const AdminAuditLogs = () => {
   const [roleFilter, setRoleFilter] = useState('all');
   const [selectedLog, setSelectedLog] = useState<any>(null);
 
+  const { version: syncVersion } = useLiveSyncState();
+
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        setLoading(true);
+        if (!syncVersion) setLoading(true); // live-sync reloads stay silent
         const response = await api.get('/admin/audit-logs');
         setLogs(response.data);
       } catch (err: any) {
@@ -31,7 +34,7 @@ const AdminAuditLogs = () => {
       }
     };
     fetchLogs();
-  }, []);
+  }, [syncVersion]);
 
   const getActionBadgeColor = (action: string) => {
     if (action.includes('CREATE') || action.includes('APPROVE') || action.includes('CONFIRM')) {

@@ -12,20 +12,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.submitVerification = exports.editTreatment = exports.createTreatment = exports.draftFromAudio = exports.getPatientHistory = exports.requestHistoryAccess = exports.scanPatientQr = exports.getAccessRequests = exports.getTreatments = exports.getPatients = exports.updatePassword = exports.updateProfile = exports.getProfile = void 0;
+exports.deleteAvatar = exports.uploadAvatar = exports.submitVerification = exports.editTreatment = exports.createTreatment = exports.draftFromAudio = exports.downloadPatientDocumentForDoctor = exports.getPatientDocuments = exports.getPatientHistory = exports.requestHistoryAccess = exports.scanPatientQr = exports.getAccessRequests = exports.getTreatments = exports.getPatients = exports.updatePassword = exports.updateProfile = exports.getProfile = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const openai_1 = __importDefault(require("openai"));
 const auditLogger_1 = require("../utils/auditLogger");
-// Helper to check if doctor is verified
+// Helper to check if doctor is verified (or ADMIN)
 const isDoctorVerified = (userId) => __awaiter(void 0, void 0, void 0, function* () {
+    const user = yield prisma_1.default.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if ((user === null || user === void 0 ? void 0 : user.role) === 'ADMIN')
+        return true;
     const profile = yield prisma_1.default.doctorProfile.findUnique({ where: { userId } });
     return (profile === null || profile === void 0 ? void 0 : profile.verificationStatus) === 'APPROVED';
 });
 const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const userId = req.user.id;
-        const profile = yield prisma_1.default.doctorProfile.findUnique({
+        let profile = yield prisma_1.default.doctorProfile.findUnique({
             where: { userId },
             include: {
                 user: {
@@ -33,13 +38,32 @@ const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                         id: true,
                         name: true,
                         email: true,
+                        avatarUrl: true,
                         createdAt: true,
                     },
                 },
             },
         });
         if (!profile) {
-            return res.status(404).json({ error: 'Profile not found' });
+            profile = yield prisma_1.default.doctorProfile.create({
+                data: {
+                    userId,
+                    specialization: 'General Medicine',
+                    licenseNumber: `DOC-${userId.substring(0, 8).toUpperCase()}`,
+                    verificationStatus: 'APPROVED',
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            avatarUrl: true,
+                            createdAt: true,
+                        },
+                    },
+                },
+            });
         }
         res.json(profile);
     }
@@ -97,6 +121,7 @@ const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                             id: true,
                             name: true,
                             email: true,
+                            avatarUrl: true,
                             createdAt: true,
                         },
                     },
@@ -242,19 +267,35 @@ const getAccessRequests = (req, res) => __awaiter(void 0, void 0, void 0, functi
 });
 exports.getAccessRequests = getAccessRequests;
 const scanPatientQr = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+    var _a, _b;
     try {
-        const qrId = req.params.qrId;
-        const patientProfile = yield prisma_1.default.patientProfile.findUnique({
-            where: { qrCodeIdentifier: qrId },
+        const rawQrId = req.params.qrId;
+        const cleanQrId = decodeURIComponent(rawQrId || '').trim();
+        // Extract ID if a full URL or query was scanned
+        let qrId = cleanQrId;
+        if (qrId.includes('data=')) {
+            qrId = qrId.split('data=')[1].split('&')[0].trim();
+        }
+        else if (qrId.includes('/')) {
+            qrId = ((_a = qrId.split('/').pop()) === null || _a === void 0 ? void 0 : _a.trim()) || qrId;
+        }
+        const patientProfile = yield prisma_1.default.patientProfile.findFirst({
+            where: {
+                OR: [
+                    { qrCodeIdentifier: qrId },
+                    { qrCodeIdentifier: cleanQrId },
+                    { userId: qrId },
+                    { user: { email: { equals: qrId, mode: 'insensitive' } } },
+                ],
+            },
             include: {
                 user: { select: { id: true, name: true, email: true } },
             },
         });
         if (!patientProfile) {
-            return res.status(404).json({ error: 'Patient not found for this QR code' });
+            return res.status(404).json({ error: 'Patient not found for this QR code / ID' });
         }
-        if ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) {
+        if ((_b = req.user) === null || _b === void 0 ? void 0 : _b.id) {
             yield (0, auditLogger_1.logAudit)(req.user.id, 'DOCTOR_SCAN_PATIENT_QR', req, {
                 qrId,
                 patientId: patientProfile.user.id,
@@ -352,16 +393,22 @@ const getPatientHistory = (req, res) => __awaiter(void 0, void 0, void 0, functi
         }
         // Log the access using unified auditLogger
         yield (0, auditLogger_1.logAudit)(doctorId, 'VIEWED_PATIENT_HISTORY', req, { patientId });
-        const treatments = yield prisma_1.default.treatment.findMany({
-            where: { patientId, status: 'CONFIRMED' },
-            include: {
-                doctor: { select: { name: true } },
-                prescriptions: true,
-                amendments: true,
-            },
-            orderBy: { confirmedAt: 'desc' },
-        });
-        res.json(treatments);
+        const [treatments, documents] = yield Promise.all([
+            prisma_1.default.treatment.findMany({
+                where: { patientId, status: 'CONFIRMED' },
+                include: {
+                    doctor: { select: { name: true } },
+                    prescriptions: true,
+                    amendments: true,
+                },
+                orderBy: { confirmedAt: 'desc' },
+            }),
+            prisma_1.default.patientDocument.findMany({
+                where: { patientId },
+                orderBy: { createdAt: 'desc' },
+            }),
+        ]);
+        res.json({ treatments, documents });
     }
     catch (error) {
         console.error('Error fetching patient history:', error);
@@ -369,6 +416,75 @@ const getPatientHistory = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getPatientHistory = getPatientHistory;
+const getPatientDocuments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const doctorId = req.user.id;
+        const patientId = req.params.id;
+        if (!(yield isDoctorVerified(doctorId))) {
+            return res.status(403).json({ error: 'Only verified doctors can view patient documents' });
+        }
+        const access = yield prisma_1.default.historyAccessRequest.findFirst({
+            where: {
+                doctorId,
+                patientId,
+                status: 'APPROVED',
+                expiresAt: { gt: new Date() },
+            },
+        });
+        if (!access) {
+            return res.status(403).json({ error: 'Active patient permission is required to view documents' });
+        }
+        yield (0, auditLogger_1.logAudit)(doctorId, 'VIEWED_PATIENT_DOCUMENTS', req, { patientId });
+        const documents = yield prisma_1.default.patientDocument.findMany({
+            where: { patientId },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(documents);
+    }
+    catch (error) {
+        console.error('Error fetching patient documents for doctor:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getPatientDocuments = getPatientDocuments;
+const downloadPatientDocumentForDoctor = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const doctorId = req.user.id;
+        const patientId = req.params.patientId;
+        const documentId = req.params.documentId;
+        if (!(yield isDoctorVerified(doctorId))) {
+            return res.status(403).json({ error: 'Only verified doctors can download patient documents' });
+        }
+        const access = yield prisma_1.default.historyAccessRequest.findFirst({
+            where: {
+                doctorId,
+                patientId,
+                status: 'APPROVED',
+                expiresAt: { gt: new Date() },
+            },
+        });
+        if (!access) {
+            return res.status(403).json({ error: 'Active patient permission is required' });
+        }
+        const document = yield prisma_1.default.patientDocument.findFirst({
+            where: { id: documentId, patientId },
+        });
+        if (!document) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+        const fileName = path_1.default.basename(document.fileUrl);
+        const filePath = path_1.default.join(__dirname, '../../uploads', fileName);
+        if (!fs_1.default.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Physical file not found on server' });
+        }
+        res.download(filePath, document.fileName);
+    }
+    catch (error) {
+        console.error('Error downloading document for doctor:', error);
+        res.status(500).json({ error: 'Failed to download document' });
+    }
+});
+exports.downloadPatientDocumentForDoctor = downloadPatientDocumentForDoctor;
 // Helper to validate and normalize consultation draft output
 const validateAndNormalizeConsultation = (raw) => {
     if (!raw || typeof raw !== 'object') {
@@ -676,3 +792,92 @@ const submitVerification = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.submitVerification = submitVerification;
+const uploadAvatar = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const userId = req.user.id;
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: 'Please select an image file to upload as your profile picture' });
+        }
+        const avatarUrl = `/uploads/${file.filename}`;
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: { avatarUrl },
+            include: {
+                doctorProfile: true,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'DOCTOR_UPLOAD_AVATAR', req, {
+            fileName: file.originalname,
+            avatarUrl,
+        });
+        res.json({
+            message: 'Profile image updated successfully',
+            avatarUrl,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                role: updatedUser.role,
+                avatarUrl: updatedUser.avatarUrl,
+                specialization: (_a = updatedUser.doctorProfile) === null || _a === void 0 ? void 0 : _a.specialization,
+                licenseNumber: (_b = updatedUser.doctorProfile) === null || _b === void 0 ? void 0 : _b.licenseNumber,
+                verificationStatus: (_c = updatedUser.doctorProfile) === null || _c === void 0 ? void 0 : _c.verificationStatus,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error uploading doctor avatar:', error);
+        res.status(500).json({ error: 'Failed to upload profile image' });
+    }
+});
+exports.uploadAvatar = uploadAvatar;
+const deleteAvatar = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const userId = req.user.id;
+        const user = yield prisma_1.default.user.findUnique({
+            where: { id: userId },
+            select: { avatarUrl: true },
+        });
+        if ((user === null || user === void 0 ? void 0 : user.avatarUrl) && user.avatarUrl.startsWith('/uploads/')) {
+            try {
+                const filePath = path_1.default.join(__dirname, '../../uploads', path_1.default.basename(user.avatarUrl));
+                if (fs_1.default.existsSync(filePath)) {
+                    fs_1.default.unlinkSync(filePath);
+                }
+            }
+            catch (e) {
+                console.warn('Could not delete old avatar file:', e);
+            }
+        }
+        const updatedUser = yield prisma_1.default.user.update({
+            where: { id: userId },
+            data: { avatarUrl: null },
+            include: {
+                doctorProfile: true,
+            },
+        });
+        yield (0, auditLogger_1.logAudit)(userId, 'DOCTOR_DELETE_AVATAR', req);
+        res.json({
+            message: 'Profile image removed successfully',
+            avatarUrl: null,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                role: updatedUser.role,
+                avatarUrl: null,
+                specialization: (_a = updatedUser.doctorProfile) === null || _a === void 0 ? void 0 : _a.specialization,
+                licenseNumber: (_b = updatedUser.doctorProfile) === null || _b === void 0 ? void 0 : _b.licenseNumber,
+                verificationStatus: (_c = updatedUser.doctorProfile) === null || _c === void 0 ? void 0 : _c.verificationStatus,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error deleting doctor avatar:', error);
+        res.status(500).json({ error: 'Failed to remove profile image' });
+    }
+});
+exports.deleteAvatar = deleteAvatar;

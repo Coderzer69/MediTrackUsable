@@ -1,0 +1,65 @@
+{
+  "uploadPdf": [
+    201,
+    "LAB_REPORT",
+    "no storage path exposed"
+  ],
+  "uploadPng": [
+    201,
+    "rx.png"
+  ],
+  "storedPrivately": {
+    "privateFilesAdded": 2,
+    "publicFilesAdded": 0
+  },
+  "rejectTxt": {
+    "error": "Only PDF, JPG and PNG files are allowed."
+  },
+  "rejectFakePdf": {
+    "error": "This file does not look like a valid PDF, JPG or PNG. Please choose another file."
+  },
+  "rejectOversize": [
+    413,
+    "File is too large. The maximum size is 10 MB."
+  ],
+  "privateFilesAfterRejects": 2,
+  "patientList": [
+    "rx.png [PRESCRIPTION]",
+    "Blood test [LAB_REPORT]"
+  ],
+  "preview": [
+    200,
+    "application/pdf",
+    "inline"
+  ],
+  "download": [
+    200,
+    "attachment"
+  ],
+  "noLoginBlocked": 401,
+  "doctorBeforeApproval": 403,
+  "doctorFileBeforeApproval": 403,
+  "approve": 200,
+  "doctorAfterApproval": [
+    200,
+    "2 records"
+  ],
+  "doctorPreview": [
+    200,
+    "application/pdf"
+  ],
+  "doctorDownload": [
+    200,
+    "attachment"
+  ],
+  "doctorCannotDelete": [
+    404,
+    403
+  ],
+  "historyIncludesDocs": 2,
+  "patientDelete": 200,
+  "fileRemovedFromDisk": true,
+  "cleanup": {
+    "privateFilesLeft": 0
+  }
+}

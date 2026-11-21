@@ -16,6 +16,7 @@ import {
   getAuditLogs,
   getDoctorById,
   updateAdminProfile,
+  getSyncState,
 } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middlewares/authMiddleware';
 
@@ -24,6 +25,7 @@ const router = Router();
 router.use(authenticate, requireRole(['ADMIN']));
 
 router.get('/dashboard-stats', getDashboardStats);
+router.get('/sync-state', getSyncState);
 
 // Admin Profile
 router.put('/profile', updateAdminProfile);

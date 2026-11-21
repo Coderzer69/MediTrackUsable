@@ -28,32 +28,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static files with fallback for verification documents
-app.use('/uploads', (req: Request, res: Response, next: NextFunction) => {
-  const filename = path.basename(req.path);
-  const targetPath = path.join(uploadsDir, filename);
-
-  if (fs.existsSync(targetPath)) {
-    return res.sendFile(targetPath);
-  }
-
-  // Fallback for license / qualification documents if exact file is missing
-  if (filename.toLowerCase().includes('license')) {
-    const licenses = fs.readdirSync(uploadsDir).filter(f => f.toLowerCase().includes('license'));
-    if (licenses.length > 0) {
-      return res.sendFile(path.join(uploadsDir, licenses[0]));
-    }
-  }
-
-  if (filename.toLowerCase().includes('qualification')) {
-    const quals = fs.readdirSync(uploadsDir).filter(f => f.toLowerCase().includes('qualification'));
-    if (quals.length > 0) {
-      return res.sendFile(path.join(uploadsDir, quals[0]));
-    }
-  }
-
-  next();
-});
+// Public uploads (doctor verification files and avatars).
+// Patient medical records are NOT stored here: they live in private-uploads/
+// and are only reachable through the authenticated /api/.../documents routes.
+// (The old fallback that returned a different doctor's licence file for any
+// missing "license" URL has been removed - it exposed other people's documents.)
 app.use('/uploads', express.static(uploadsDir));
 
 // Root and Health Endpoints
@@ -108,9 +87,26 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
-const server = app.listen(port, () => {
-  console.log(`Server is running on port ${port} (http://localhost:${port})`);
-});
+// Start the server for standalone runtimes (local dev, Render, Railway, Docker, etc.)
+// When deployed on Vercel, Vercel exports the Express app as a serverless function.
+if (!process.env.VERCEL) {
+  const server = app.listen(port, (err?: Error) => {
+    if (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Stop the other process using it (another MediTrack backend?) and try again.`);
+      } else {
+        console.error('Failed to start server:', err);
+      }
+      process.exit(1);
+    }
+    console.log(`Server is running on port ${port} (http://localhost:${port})`);
+  });
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    console.error('Server error:', err.code === 'EADDRINUSE' ? `Port ${port} is already in use.` : err);
+    process.exit(1);
+  });
+}
 
 export default app;
 

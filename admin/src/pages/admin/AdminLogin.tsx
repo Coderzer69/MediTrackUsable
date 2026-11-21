@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import { Loader2, Mail, Lock, Eye, EyeOff, LogIn, Check, ShieldPlus } from 'lucide-react';
+import ThemeToggle from '../../components/ThemeToggle';
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
@@ -46,6 +47,9 @@ const AdminLogin = () => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-100 font-sans p-4 sm:p-8 lg:p-12">
+      <div className="fixed top-5 right-5 z-50">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-6xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row border border-gray-200 lg:aspect-[16/10] xl:aspect-[16/9] min-h-[600px]">
 
         {/* Left Panel - Branding */}
@@ -93,27 +97,9 @@ const AdminLogin = () => {
         {/* Right Panel - Login Form */}
         <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-8 sm:p-12 xl:p-20">
           <div className="w-full max-w-md">
-            <div className="text-center mb-6">
-              <h2 className="text-3xl font-bold text-[#1e293b] mb-2">Welcome Back!</h2>
-              <p className="text-gray-500 font-medium text-sm">Sign in to continue to your admin dashboard</p>
-            </div>
-
-            {/* Quick Demo Fill */}
-            <div className="mb-6 p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
-              <div className="flex flex-col text-left">
-                <span className="text-xs font-bold text-emerald-900">Admin Account</span>
-                <span className="text-[11px] text-emerald-700">admin@meditrack.com</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@meditrack.com');
-                  setPassword('password123');
-                }}
-                className="px-3 py-1.5 bg-[#065f46] hover:bg-[#047857] text-white text-xs font-bold rounded-lg transition-colors"
-              >
-                Auto-fill
-              </button>
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-bold text-[#1e293b] mb-3">Welcome Back!</h2>
+              <p className="text-gray-500 font-medium">Sign in to continue to your admin dashboard</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">

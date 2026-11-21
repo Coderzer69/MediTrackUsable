@@ -1,0 +1,18 @@
+{
+  "databaseHost": "ep-red-butterfly-ayk4ww2m-pooler.c-5.us-east-2.aws.neon.tech",
+  "users": 25,
+  "usersByRole": {
+    "PATIENT": 12,
+    "ADMIN": 1,
+    "DOCTOR": 12
+  },
+  "doctorProfiles": 0,
+  "patientProfiles": 0,
+  "doctorsWithoutProfile": 12,
+  "patientsWithoutProfile": 12,
+  "treatments": 17,
+  "prescriptions": 7,
+  "accessRequests": 2,
+  "auditLogs": 87,
+  "documents": 0
+}

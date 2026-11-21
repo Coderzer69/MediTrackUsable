@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
-import api, { API_URL } from '../lib/api';
+import { useTranslation } from 'react-i18next';
+import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,7 +27,7 @@ export default function LoginPage() {
     try {
       const res = await api.post('/auth/login', { email, password });
       login(res.data.token, res.data.user);
-      
+
       if (res.data.user.role === 'DOCTOR') {
         navigate('/doctor/dashboard');
       } else if (res.data.user.role === 'ADMIN') {
@@ -32,56 +36,52 @@ export default function LoginPage() {
         navigate('/patient/dashboard');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid email or password. Please try again.');
+      setError(err.response?.data?.error || t('auth.invalidCredentials'));
     } finally {
       setLoading(false);
     }
   };
 
-  const fillAccount = (fillEmail: string, fillPass: string = 'password123') => {
-    setEmail(fillEmail);
-    setPassword(fillPass);
-    setError('');
-    setInfoMessage(`Filled ${fillEmail}. Click "Log In" to proceed.`);
-  };
-
   return (
-    <div className="min-h-screen bg-[#F8FAF9] flex w-full font-sans">
-      
+    <div className="min-h-screen bg-[#F8FAF9] flex w-full font-sans relative">
+      {/* Top Bar with Language Switcher */}
+      <div className="absolute top-5 right-6 z-30 flex items-center gap-3">
+        <ThemeToggle />
+        <LanguageSwitcher />
+      </div>
+
       {/* Left Column - Branding */}
       <div className="hidden lg:flex flex-col flex-1 relative overflow-hidden bg-gradient-to-br from-[#f0fdf7] to-[#F8FAF9] p-16 justify-center">
-        {/* Background decorations */}
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-50/50 rounded-full blur-[100px] translate-x-1/3 -translate-y-1/3"></div>
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-emerald-100/30 rounded-full blur-[100px] -translate-x-1/3 translate-y-1/3"></div>
-        
-        {/* Dot Pattern (subtle) */}
+
         <div className="absolute top-10 right-10 w-48 h-48" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1.5px, transparent 1.5px)', backgroundSize: '16px 16px', opacity: 0.4 }}></div>
 
         {/* Content */}
         <div className="relative z-10 max-w-md">
           {/* Logo */}
-          <div className="flex items-center gap-2 mb-16">
+          <Link to="/" className="flex items-center gap-2 mb-16 inline-flex">
             <div className="text-[#0b3b2c]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-9 h-9">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 <path d="M7.5 12h2l1.5 -3l2.5 6l1.5 -3h2.5" />
               </svg>
             </div>
-            <span className="text-[26px] font-bold text-[#0b3b2c] tracking-tight">MediTrack</span>
-          </div>
+            <span className="text-[26px] font-bold text-[#0b3b2c] tracking-tight">{t('common.appName')}</span>
+          </Link>
 
           <h1 className="text-[44px] font-extrabold text-gray-900 leading-[1.1] mb-5 tracking-tight">
-            Smart Care. <br />
-            <span className="text-emerald-700">Better Outcomes.</span>
+            {t('auth.smartCare')} <br />
+            <span className="text-emerald-700">{t('auth.betterOutcomes')}</span>
           </h1>
 
           <p className="text-[17px] text-gray-600 leading-relaxed mb-10 max-w-sm">
-            MediTrack helps healthcare professionals manage treatments, prescriptions and medical history securely.
+            {t('auth.brandTagline')}
           </p>
 
           <div className="flex items-center gap-2 text-emerald-800 font-semibold text-[14px]">
             <ShieldCheck className="w-5 h-5 text-emerald-600" />
-            Secure. Private. Compliant.
+            {t('auth.securePrivateCompliant')}
           </div>
         </div>
       </div>
@@ -89,47 +89,13 @@ export default function LoginPage() {
       {/* Right Column - Login Form */}
       <div className="flex-1 flex items-center justify-center p-6 relative">
         <div className="w-full max-w-[480px] bg-white rounded-2xl p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative z-10">
-          
-          {/* Form Header */}
-          <div className="text-center mb-6">
-            <h2 className="text-2xl sm:text-[26px] font-extrabold text-gray-900 mb-2 flex items-center justify-center gap-2">
-              Welcome back <span>👋</span>
-            </h2>
-            <p className="text-gray-500 text-sm font-medium">Log in to your MediTrack account</p>
-          </div>
 
-          {/* Quick Demo Accounts Selection */}
-          <div className="mb-6 p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-xl">
-            <div className="text-[12px] font-bold text-emerald-900 mb-2 flex items-center gap-1.5">
-              <UserCheck className="w-4 h-4 text-emerald-700" />
-              <span>Quick Demo Accounts (Click to Fill):</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => fillAccount('urvishbhardwaj7@gmail.com')}
-                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
-              >
-                <span className="font-bold">Dr. Urvish</span>
-                <span className="text-[10px] text-gray-500">Doctor</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillAccount('admin@meditrack.com')}
-                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
-              >
-                <span className="font-bold">Super Admin</span>
-                <span className="text-[10px] text-gray-500">Admin</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillAccount('patient@meditrack.com')}
-                className="px-2 py-1.5 bg-white border border-emerald-200 hover:border-emerald-500 rounded-lg text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-50/80 transition-colors flex flex-col items-center"
-              >
-                <span className="font-bold">Patient</span>
-                <span className="text-[10px] text-gray-500">Alex</span>
-              </button>
-            </div>
+          {/* Form Header */}
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-[26px] font-extrabold text-gray-900 mb-2 flex items-center justify-center gap-2">
+              {t('auth.welcomeBack')} <span>👋</span>
+            </h2>
+            <p className="text-gray-500 text-sm font-medium">{t('auth.loginSubtitle')}</p>
           </div>
 
           <form className="flex flex-col gap-5" onSubmit={handleLogin}>
@@ -146,12 +112,12 @@ export default function LoginPage() {
 
             {/* Email Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-bold text-gray-800">Email</label>
+              <label className="text-[13px] font-bold text-gray-800">{t('auth.emailLabel')}</label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-400" />
-                <input 
-                  type="email" 
-                  placeholder="Enter your email" 
+                <input
+                  type="email"
+                  placeholder={t('auth.emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -163,26 +129,26 @@ export default function LoginPage() {
             {/* Password Field */}
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center">
-                <label className="text-[13px] font-bold text-gray-800">Password</label>
-                <button 
+                <label className="text-[13px] font-bold text-gray-800">{t('auth.passwordLabel')}</label>
+                <button
                   type="button"
                   onClick={() => setInfoMessage('Default testing password for all accounts is "password123". For other accounts, contact admin@meditrack.com.')}
                   className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800"
                 >
-                  Forgot password?
+                  {t('auth.forgotPassword')}
                 </button>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-400" />
-                <input 
-                  type={showPassword ? "text" : "password"} 
-                  placeholder="Enter your password" 
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder={t('auth.passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-[14.5px] transition-colors bg-gray-50/30"
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
@@ -197,19 +163,21 @@ export default function LoginPage() {
             </div>
 
             {/* Submit Button */}
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={loading}
-              className="w-full bg-[#0b3b2c] hover:bg-[#082a1f] text-white py-3.5 rounded-xl font-bold text-[15px] transition-colors mt-2 disabled:opacity-70 shadow-sm"
+              className="w-full bg-[#0b3b2c] hover:bg-[#082a1f] text-white py-3.5 rounded-xl font-bold text-[15px] transition-colors mt-2 disabled:opacity-70 shadow-sm cursor-pointer"
             >
-              {loading ? 'Logging in...' : 'Log In'}
+              {loading ? t('auth.signingIn') : t('auth.signIn')}
             </button>
           </form>
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-6">
             <div className="h-px bg-gray-100 flex-1"></div>
-            <span className="text-[12px] text-gray-400 font-medium uppercase tracking-wider">or sign in with</span>
+            <span className="text-[12px] text-gray-400 font-medium uppercase tracking-wider">
+              {t('common.or')}
+            </span>
             <div className="h-px bg-gray-100 flex-1"></div>
           </div>
 
@@ -219,35 +187,26 @@ export default function LoginPage() {
               <GoogleLogin
                 onSuccess={async (credentialResponse) => {
                   try {
-                    const res = await fetch(`${API_URL}/auth/oauth-login`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        credential: credentialResponse.credential,
-                      }),
+                    const res = await api.post('/auth/oauth-login', {
+                      credential: credentialResponse.credential,
                     });
-                    const data = await res.json();
-                    if (res.ok) {
-                      login(data.token, data.user);
-                      if (data.user.role === 'DOCTOR') {
-                        navigate('/doctor/dashboard');
-                      } else if (data.user.role === 'ADMIN') {
-                        navigate('/admin/dashboard');
-                      } else {
-                        navigate('/patient/dashboard');
-                      }
+                    const { token, user: authUser } = res.data;
+                    login(token, authUser);
+                    if (authUser.role === 'DOCTOR') {
+                      navigate('/doctor/dashboard');
+                    } else if (authUser.role === 'ADMIN') {
+                      navigate('/admin/dashboard');
                     } else {
-                      setError(data.error || 'Google login failed');
+                      navigate('/patient/dashboard');
                     }
-                  } catch (err) {
-                    console.error('Error during Google login', err);
-                    setError('An error occurred during Google login.');
+                  } catch (err: any) {
+                    console.error('Google OAuth backend error:', err);
+                    setError(err.response?.data?.error || 'Google login failed.');
                   }
                 }}
                 onError={() => {
-                  setError('Google OAuth Client is deleted or inactive in Google Cloud. Please use Email & Password above to log in.');
+                  console.error('Google Login Prompt Error');
+                  setError('Google Sign-In failed or was cancelled.');
                 }}
                 shape="rectangular"
                 size="large"
@@ -257,7 +216,10 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-8 text-center text-[13px] text-gray-500 font-medium">
-            Don't have an account? <Link to="/role-selection" className="text-emerald-700 hover:text-emerald-800 font-bold">Sign up</Link>
+            {t('auth.noAccount')}{' '}
+            <Link to="/role-selection" className="text-emerald-700 hover:text-emerald-800 font-bold">
+              {t('auth.signUp')}
+            </Link>
           </div>
         </div>
       </div>

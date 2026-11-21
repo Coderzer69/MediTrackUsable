@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middlewares/authMiddleware';
@@ -55,6 +56,13 @@ export const createDoctor = async (req: AuthRequest, res: Response) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    let creatorAdminId: string | null = null;
+    if (req.user?.id) {
+      const actingAdmin = await prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true } });
+      creatorAdminId = actingAdmin?.id ?? null;
+    }
+
     const doctor = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -71,7 +79,7 @@ export const createDoctor = async (req: AuthRequest, res: Response) => {
           specialization: specialization ? specialization.trim() : null,
           licenseNumber: licenseNumber ? licenseNumber.trim() : null,
           verificationStatus: verificationStatus || 'APPROVED',
-          verifiedById: req.user?.id || null,
+          verifiedById: creatorAdminId,
         },
         include: {
           user: {
@@ -321,13 +329,10 @@ export const getPatients = async (req: AuthRequest, res: Response) => {
 
     const formatted = patients.map((p) => ({
       id: p.id,
-      userId: p.id,
       name: p.name,
       email: p.email,
       createdAt: p.createdAt,
       qrCodeIdentifier: p.patientProfile?.qrCodeIdentifier || '',
-      patientProfile: p.patientProfile,
-      user: { id: p.id, name: p.name, email: p.email },
     }));
 
     res.json(formatted);
@@ -382,8 +387,6 @@ export const createPatient = async (req: AuthRequest, res: Response) => {
         email: user.email,
         createdAt: user.createdAt,
         qrCodeIdentifier: profile.qrCodeIdentifier,
-        patientProfile: profile,
-        user: { id: user.id, name: user.name, email: user.email },
       };
     });
 
@@ -454,9 +457,8 @@ export const updatePatient = async (req: AuthRequest, res: Response) => {
         id: updated.id,
         name: updated.name,
         email: updated.email,
-        qrCodeIdentifier: updated.patientProfile?.qrCodeIdentifier,
-        patientProfile: updated.patientProfile,
-        user: { id: updated.id, name: updated.name, email: updated.email },
+        createdAt: updated.createdAt,
+        qrCodeIdentifier: updated.patientProfile?.qrCodeIdentifier || '',
       },
     });
   } catch (error: any) {
@@ -629,3 +631,32 @@ export const updateAdminProfile = async (req: AuthRequest, res: Response) => {
   }
 };
 
+
+// ---------------------------------------------------------------- live sync
+// Returns a fingerprint of every table the admin panels display. The panels poll
+// this and reload when it changes, so edits made anywhere (the app, the Neon
+// console, Prisma Studio, scripts) show up within a few seconds.
+// Whole-row hashes are used because direct SQL edits do not touch `updatedAt`.
+const SYNC_STATE_SQL = `
+  SELECT
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "User" t)                 AS users,
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "DoctorProfile" t)        AS doctors,
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "PatientProfile" t)       AS patients,
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "Treatment" t)            AS treatments,
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "Prescription" t)         AS prescriptions,
+    (SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t.id), '')) FROM "HistoryAccessRequest" t) AS "accessRequests",
+    (SELECT count(*)::text || ':' || coalesce(max("createdAt")::text, '') FROM "AuditLog")            AS "auditLogs"
+`;
+
+export const getSyncState = async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(SYNC_STATE_SQL);
+    const sections = rows[0] || {};
+    const version = crypto.createHash('md5').update(JSON.stringify(sections)).digest('hex');
+    res.set('Cache-Control', 'no-store');
+    res.json({ version, sections, checkedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error('Error computing sync state:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

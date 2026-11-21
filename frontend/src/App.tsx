@@ -9,25 +9,27 @@ import DoctorDashboard from './pages/DoctorDashboard';
 import DoctorVerification from './pages/DoctorVerification';
 import AdminDashboard from './pages/AdminDashboard';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { dashboardPathForRole } from './lib/session';
+import { canAccessRole } from './lib/access';
 
 const DoctorProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role !== 'DOCTOR') return <Navigate to="/" replace />;
+  if (!canAccessRole(user, 'DOCTOR')) return <Navigate to={dashboardPathForRole(user?.role)} replace />;
   return <>{children}</>;
 };
 
 const PatientProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role !== 'PATIENT') return <Navigate to="/" replace />;
+  if (!canAccessRole(user, 'PATIENT')) return <Navigate to={dashboardPathForRole(user?.role)} replace />;
   return <>{children}</>;
 };
 
 const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role !== 'ADMIN') return <Navigate to="/" replace />;
+  if (!canAccessRole(user, 'ADMIN')) return <Navigate to={dashboardPathForRole(user?.role)} replace />;
   return <>{children}</>;
 };
 

@@ -8,6 +8,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import api from '../../lib/api';
+import { useLiveSyncState } from '../../context/LiveSyncContext';
 
 const AdminHistoryAccess = () => {
   const [requests, setRequests] = useState<any[]>([]);
@@ -16,10 +17,12 @@ const AdminHistoryAccess = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const { version: syncVersion } = useLiveSyncState();
+
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        setLoading(true);
+        if (!syncVersion) setLoading(true); // live-sync reloads stay silent
         const response = await api.get('/admin/history-requests');
         setRequests(response.data);
       } catch (err: any) {
@@ -30,7 +33,7 @@ const AdminHistoryAccess = () => {
       }
     };
     fetchRequests();
-  }, []);
+  }, [syncVersion]);
 
   const getStatusBadge = (status: string, expiresAt?: string) => {
     const isExpired = expiresAt && new Date(expiresAt).getTime() < Date.now();

@@ -1,16 +1,179 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import {
-  Users, Activity, ClipboardList, ShieldCheck,
+  Users, ShieldCheck, LayoutDashboard, ArrowRight,
   CheckCircle, XCircle, Eye, Menu, X,
   Plus, Edit2, Trash2, ShieldAlert, FileText, ScrollText,
-  Search, RefreshCw, AlertCircle, Pill, Stethoscope, FileCheck, Clock
+  Search, RefreshCw, AlertCircle, Pill, Stethoscope, FileCheck, Clock, Inbox
 } from 'lucide-react';
 import api, { BACKEND_URL } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
+import AdminViewSwitcher from '../components/AdminViewSwitcher';
+import LiveSyncIndicator from '../components/LiveSyncIndicator';
+import { useLiveSync } from '../lib/liveSync';
+
+// ---------------------------------------------------------------- design tokens
+const CARD = 'bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+const H1 = 'text-[22px] sm:text-[26px] font-semibold text-slate-900 tracking-tight';
+const SUBTITLE = 'text-sm text-slate-500 mt-1';
+const INPUT =
+  'w-full bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10';
+const BTN_PRIMARY =
+  'inline-flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl shadow-sm shadow-emerald-900/10 transition-colors duration-200 disabled:opacity-50';
+const BTN_SECONDARY =
+  'inline-flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl transition-colors duration-200';
+const BTN_DANGER =
+  'inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl shadow-sm shadow-rose-900/10 transition-colors duration-200 disabled:opacity-50';
+const TH = 'px-4 sm:px-6 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em]';
+
+type AdminTab = 'dashboard' | 'doctors' | 'patients' | 'treatments' | 'audit-logs';
+
+const NAV_ITEMS: { id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+  { id: 'doctors', label: 'Doctors', icon: Stethoscope },
+  { id: 'patients', label: 'Patients', icon: Users },
+  { id: 'treatments', label: 'Treatments', icon: FileText },
+  { id: 'audit-logs', label: 'Audit logs', icon: ScrollText },
+];
+
+const TAB_TITLES: Record<AdminTab, string> = {
+  dashboard: 'Overview',
+  doctors: 'Doctors',
+  patients: 'Patients',
+  treatments: 'Treatments',
+  'audit-logs': 'Audit logs',
+};
+
+const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
+  APPROVED: { pill: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15', dot: 'bg-emerald-500' },
+  CONFIRMED: { pill: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15', dot: 'bg-emerald-500' },
+  PENDING: { pill: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-500' },
+  DRAFT: { pill: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-500' },
+  REJECTED: { pill: 'bg-rose-50 text-rose-700 ring-rose-600/15', dot: 'bg-rose-500' },
+};
+
+function StatusBadge({ status }: { status?: string }) {
+  const style = STATUS_STYLES[status || ''] || { pill: 'bg-slate-100 text-slate-600 ring-slate-500/15', dot: 'bg-slate-400' };
+  const label = status ? status.charAt(0) + status.slice(1).toLowerCase() : 'Unknown';
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${style.pill}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      {label}
+    </span>
+  );
+}
+
+// Animated number: counts up briefly when the value changes (skipped for reduced motion).
+function useCountUp(target: number, duration = 650) {
+  const [value, setValue] = useState(target);
+  useEffect(() => {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || target === 0) {
+      setValue(target);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(target * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+  return value;
+}
+
+const STAT_TONES = {
+  indigo: { tile: 'bg-indigo-50 text-indigo-600', line: 'from-indigo-500/70' },
+  amber: { tile: 'bg-amber-50 text-amber-600', line: 'from-amber-500/70' },
+  sky: { tile: 'bg-sky-50 text-sky-600', line: 'from-sky-500/70' },
+  emerald: { tile: 'bg-emerald-50 text-emerald-600', line: 'from-emerald-500/70' },
+};
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  footer,
+  index,
+}: {
+  label: string;
+  value: number;
+  icon: ComponentType<{ className?: string }>;
+  tone: keyof typeof STAT_TONES;
+  footer: ReactNode;
+  index: number;
+}) {
+  const shown = useCountUp(value);
+  const t = STAT_TONES[tone];
+  return (
+    <div
+      className={`group relative overflow-hidden ${CARD} p-5 sm:p-6 transition-[translate,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-14px_rgba(15,23,42,0.25)] animate-fade-up`}
+      style={{ animationDelay: `${index * 70}ms` }}
+    >
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r ${t.line} to-transparent`} />
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[13px] font-medium text-slate-500">{label}</p>
+        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${t.tile} transition-transform duration-300 group-hover:scale-105`}>
+          <Icon className="h-[18px] w-[18px]" />
+        </span>
+      </div>
+      <p className="mt-2 text-[28px] sm:text-[32px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums">{shown}</p>
+      <div className="mt-3 text-[12.5px] text-slate-500">{footer}</div>
+    </div>
+  );
+}
+
+// Doctor names are sometimes stored with a "Dr." prefix already.
+const withDr = (name?: string) => (!name ? 'Unknown' : /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`);
+
+function Initials({ name, tone = 'slate' }: { name?: string; tone?: 'slate' | 'amber' | 'emerald' }) {
+  const initials = (name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  const tones = {
+    slate: 'bg-slate-100 text-slate-600',
+    amber: 'bg-amber-50 text-amber-700',
+    emerald: 'bg-emerald-50 text-emerald-700',
+  };
+  return (
+    <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${tones[tone]}`}>
+      {initials || '?'}
+    </span>
+  );
+}
+
+function EmptyState({ icon: Icon, message }: { icon: ComponentType<{ className?: string }>; message: string }) {
+  return (
+    <div className="py-10 flex flex-col items-center text-center">
+      <span className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+        <Icon className="h-5 w-5" />
+      </span>
+      <p className="text-sm text-slate-500">{message}</p>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="p-12 flex flex-col items-center justify-center text-sm text-slate-500 animate-fade-in">
+      <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 mb-3" />
+      <p>{label}</p>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'doctors' | 'patients' | 'treatments' | 'audit-logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [stats, setStats] = useState<any>(null);
   const [doctors, setDoctors] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
@@ -72,9 +235,14 @@ export default function AdminDashboard() {
     }
   };
 
+  // True while a background (live-sync) reload runs, so the view does not flash a spinner.
+  const silentFetch = useRef(false);
+
   const fetchData = async () => {
-    setLoading(true);
-    setErrorBanner('');
+    if (!silentFetch.current) {
+      setLoading(true);
+      setErrorBanner('');
+    }
     try {
       if (activeTab === 'dashboard') {
         const [statsRes, doctorsRes, treatmentsRes] = await Promise.all([
@@ -109,6 +277,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchData();
   }, [activeTab]);
+
+  // Live sync: quietly reload the current view whenever the database changes
+  // (from this panel, the doctor/patient apps, or a direct edit in Neon).
+  const liveSync = useLiveSync();
+  useEffect(() => {
+    if (!liveSync.version) return;
+    silentFetch.current = true;
+    fetchData().finally(() => {
+      silentFetch.current = false;
+    });
+  }, [liveSync.version]);
 
   const showNotification = (msg: string, isError = false) => {
     if (isError) {
@@ -211,8 +390,8 @@ export default function AdminDashboard() {
     setPatientModalMode('edit');
     setSelectedPatient(pat);
     setPatientForm({
-      name: pat.name || pat.user?.name || '',
-      email: pat.email || pat.user?.email || '',
+      name: pat.name || '',
+      email: pat.email || '',
       password: '',
     });
     setPatientModalOpen(true);
@@ -265,7 +444,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleTabChange = (tab: any) => {
+  const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
     setSearchTerm('');
     setSidebarOpen(false);
@@ -284,8 +463,8 @@ export default function AdminDashboard() {
 
   const filteredPatients = patients.filter((pat: any) => {
     const term = searchTerm.toLowerCase();
-    const name = pat.name || pat.user?.name || '';
-    const email = pat.email || pat.user?.email || '';
+    const name = pat.name || '';
+    const email = pat.email || '';
     const qr = pat.qrCodeIdentifier || '';
     return name.toLowerCase().includes(term) || email.toLowerCase().includes(term) || qr.toLowerCase().includes(term);
   });
@@ -306,12 +485,21 @@ export default function AdminDashboard() {
     return action.toLowerCase().includes(term) || userName.toLowerCase().includes(term) || ip.toLowerCase().includes(term);
   });
 
+  const pendingDoctors = doctors.filter((d: any) => d.verificationStatus === 'PENDING');
+  // Prefer the live doctor list (reloaded by live sync on every tab); fall back to the stats.
+  const pendingCount = doctors.length ? pendingDoctors.length : stats?.pendingDoctors ?? 0;
+  const verifiedPct = stats?.totalDoctors ? Math.round(((stats?.approvedDoctors || 0) / stats.totalDoctors) * 100) : 0;
+  const firstName = (user?.name || 'Admin').split(' ')[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
   return (
-    <div className="min-h-screen bg-[#F8FAF9] flex w-full font-sans text-gray-900">
+    <div className="min-h-screen bg-slate-50 flex w-full font-sans text-slate-900">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-30 lg:hidden"
+          className="fixed inset-0 bg-slate-950/40 backdrop-blur-[2px] z-30 lg:hidden animate-fade-in"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -319,74 +507,62 @@ export default function AdminDashboard() {
       {/* Sidebar Navigation */}
       <aside className={`
         fixed lg:sticky top-0 left-0 z-40 lg:z-auto
-        w-[270px] bg-white border-r border-gray-100 flex flex-col h-screen
-        transition-transform duration-300 ease-in-out shrink-0
+        w-[264px] bg-slate-950 flex flex-col h-screen border-r border-slate-800/80
+        transition-transform duration-300 ease-out shrink-0
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="p-6 lg:p-7 flex items-center justify-between border-b border-gray-50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#0b3b2c] flex items-center justify-center text-white shadow-sm">
-              <ShieldCheck className="w-6 h-6" />
+        <div className="px-5 h-[72px] flex items-center justify-between border-b border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-950/40">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <div>
-              <span className="text-[20px] font-extrabold text-[#0b3b2c] tracking-tight block leading-tight">MediAdmin</span>
-              <span className="text-[11px] font-semibold text-gray-400">Control Center</span>
+            <div className="leading-tight">
+              <span className="block text-[16px] font-semibold text-white tracking-tight">MediTrack</span>
+              <span className="block text-[11px] font-medium text-slate-400">Admin console</span>
             </div>
           </div>
           <button
-            className="lg:hidden p-1.5 text-gray-500 hover:text-gray-700"
+            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1.5 overflow-y-auto">
-          <button
-            onClick={() => handleTabChange('dashboard')}
-            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[14px] transition-colors w-full text-left ${activeTab === 'dashboard' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <Activity className="w-[18px] h-[18px]" />
-            Dashboard Overview
-          </button>
-          <button
-            onClick={() => handleTabChange('doctors')}
-            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[14px] transition-colors w-full text-left ${activeTab === 'doctors' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <Users className="w-[18px] h-[18px]" />
-            Manage Doctors
-          </button>
-          <button
-            onClick={() => handleTabChange('patients')}
-            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[14px] transition-colors w-full text-left ${activeTab === 'patients' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <ClipboardList className="w-[18px] h-[18px]" />
-            Manage Patients
-          </button>
-          <button
-            onClick={() => handleTabChange('treatments')}
-            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[14px] transition-colors w-full text-left ${activeTab === 'treatments' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <FileText className="w-[18px] h-[18px]" />
-            All Treatments
-          </button>
-          <button
-            onClick={() => handleTabChange('audit-logs')}
-            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[14px] transition-colors w-full text-left ${activeTab === 'audit-logs' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <ScrollText className="w-[18px] h-[18px]" />
-            Audit Logs
-          </button>
+        <nav className="flex-1 px-3 py-5 overflow-y-auto">
+          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Workspace</p>
+          <div className="flex flex-col gap-0.5">
+            {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => handleTabChange(id)}
+                  className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] font-medium w-full text-left transition-colors duration-200 ${active ? 'bg-slate-800/80 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-100'}`}
+                >
+                  <span className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-emerald-400 transition-all duration-300 ${active ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'}`} />
+                  <Icon className={`w-[18px] h-[18px] transition-colors duration-200 ${active ? 'text-emerald-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                  <span className="flex-1">{label}</span>
+                  {id === 'doctors' && pendingCount > 0 && (
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-400/15 text-amber-300 text-[11px] font-semibold inline-flex items-center justify-center">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <AdminViewSwitcher tone="dark" />
         </nav>
 
-        <div className="p-4 border-t border-gray-100 mt-auto">
-          <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 font-bold text-sm flex items-center justify-center">
+        <div className="p-3 border-t border-slate-800/80">
+          <div className="flex items-center gap-3 rounded-xl p-2.5">
+            <div className="w-9 h-9 rounded-full bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/20 font-semibold text-sm flex items-center justify-center">
               {user?.name?.charAt(0) || 'A'}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-gray-900 truncate">{user?.name || 'Admin'}</p>
-              <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
+              <p className="text-[13px] font-semibold text-slate-100 truncate">{user?.name || 'Admin'}</p>
+              <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
             </div>
           </div>
         </div>
@@ -395,31 +571,43 @@ export default function AdminDashboard() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Header */}
-        <header className="h-[72px] px-4 sm:px-8 flex items-center justify-between border-b border-gray-100 bg-white shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 h-[72px] px-4 sm:px-8 flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/80 backdrop-blur-md shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
               onClick={() => setSidebarOpen(true)}
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="text-lg font-bold text-gray-800 capitalize hidden sm:block">
-              {activeTab.replace('-', ' ')}
-            </h2>
+            <div className="min-w-0">
+              <p className="hidden sm:block text-[12px] font-medium text-slate-400 leading-tight">
+                Admin <span className="mx-1 text-slate-300">/</span>
+                <span className="text-slate-500">{TAB_TITLES[activeTab]}</span>
+              </p>
+              <h2 className="text-[17px] font-semibold text-slate-900 truncate leading-snug">{TAB_TITLES[activeTab]}</h2>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4 ml-auto">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden md:inline-flex">
+              <LiveSyncIndicator status={liveSync.status} lastSynced={liveSync.lastSynced} />
+            </span>
+            <ThemeToggle />
+            <LanguageSwitcher />
             <button
               onClick={fetchData}
-              title="Refresh Data"
-              className="p-2 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors"
+              title="Refresh data"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
             </button>
-            <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
-              <div className="text-right hidden sm:block">
-                <div className="text-[13px] font-bold text-gray-900 leading-tight">{user?.name || 'Administrator'}</div>
-                <div className="text-[11px] font-medium text-emerald-700">Root Access</div>
+            <div className="hidden sm:flex items-center gap-3 pl-3 ml-1 border-l border-slate-200">
+              <div className="text-right">
+                <div className="text-[13px] font-semibold text-slate-900 leading-tight">{user?.name || 'Administrator'}</div>
+                <div className="text-[11px] font-medium text-emerald-700 inline-flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse-soft" />
+                  Full access
+                </div>
               </div>
             </div>
           </div>
@@ -427,13 +615,13 @@ export default function AdminDashboard() {
 
         {/* Alerts */}
         {errorBanner && (
-          <div className="mx-4 sm:mx-8 mt-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2.5 text-sm text-red-700">
+          <div className="mx-4 sm:mx-8 mt-4 px-4 py-3 bg-rose-50 border border-rose-200/80 rounded-xl flex items-center gap-2.5 text-sm text-rose-700 animate-fade-up">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <span>{errorBanner}</span>
           </div>
         )}
         {successBanner && (
-          <div className="mx-4 sm:mx-8 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-sm text-emerald-800 font-medium">
+          <div className="mx-4 sm:mx-8 mt-4 px-4 py-3 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-2.5 text-sm text-emerald-800 font-medium animate-fade-up">
             <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
             <span>{successBanner}</span>
           </div>
@@ -441,157 +629,199 @@ export default function AdminDashboard() {
 
         {/* Content Body */}
         <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
-          <div className="max-w-[1240px] mx-auto">
+          <div key={activeTab} className="max-w-[1240px] mx-auto animate-fade-up">
 
             {/* TAB: DASHBOARD OVERVIEW */}
             {activeTab === 'dashboard' && (
               <>
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">System Overview</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Real-time statistics across all users and treatments.</p>
+                    <h1 className={H1}>{greeting}, {firstName}</h1>
+                    <p className={SUBTITLE}>Here is what is happening across MediTrack today.</p>
                   </div>
+                  <p className="text-[12.5px] font-medium text-slate-400">{todayLabel}</p>
                 </div>
 
-                {loading ? (
-                  <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-                    <p>Loading system statistics...</p>
+                {loading && !stats ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div key={i} className={`${CARD} p-5 sm:p-6 animate-pulse`}>
+                        <div className="h-3 w-24 rounded bg-slate-100" />
+                        <div className="mt-4 h-7 w-16 rounded bg-slate-100" />
+                        <div className="mt-4 h-2.5 w-28 rounded bg-slate-100" />
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Doctors</p>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalDoctors || 0}</h3>
-                        <p className="text-[12px] text-emerald-600 font-medium mt-1">{stats?.approvedDoctors || 0} Verified</p>
-                      </div>
-                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Pending Verifications</p>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-orange-600">{stats?.pendingDoctors || 0}</h3>
-                        <button
-                          onClick={() => handleTabChange('doctors')}
-                          className="text-[12px] font-bold text-orange-600 hover:underline mt-1 block"
-                        >
-                          Review applications →
-                        </button>
-                      </div>
-                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Patients</p>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalPatients || 0}</h3>
-                        <p className="text-[12px] text-gray-400 font-medium mt-1">Unique QR Identifiers</p>
-                      </div>
-                      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-[13px] font-semibold text-gray-500 mb-1">Total Treatments</p>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{stats?.totalTreatments || 0}</h3>
-                        <button
-                          onClick={() => handleTabChange('treatments')}
-                          className="text-[12px] font-bold text-emerald-700 hover:underline mt-1 block"
-                        >
-                          View all records →
-                        </button>
-                      </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
+                      <StatCard
+                        index={0}
+                        label="Total doctors"
+                        value={stats?.totalDoctors || 0}
+                        icon={Stethoscope}
+                        tone="indigo"
+                        footer={
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span>{stats?.approvedDoctors || 0} verified</span>
+                              <span className="font-medium text-slate-600 tabular-nums">{verifiedPct}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full bg-indigo-500 origin-left animate-grow-x" style={{ width: `${verifiedPct}%` }} />
+                            </div>
+                          </div>
+                        }
+                      />
+                      <StatCard
+                        index={1}
+                        label="Pending verifications"
+                        value={stats?.pendingDoctors || 0}
+                        icon={Clock}
+                        tone="amber"
+                        footer={
+                          <button
+                            onClick={() => handleTabChange('doctors')}
+                            className="group/link inline-flex items-center gap-1 font-semibold text-amber-700 hover:text-amber-800 transition-colors"
+                          >
+                            Review applications
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover/link:translate-x-0.5" />
+                          </button>
+                        }
+                      />
+                      <StatCard
+                        index={2}
+                        label="Registered patients"
+                        value={stats?.totalPatients || 0}
+                        icon={Users}
+                        tone="sky"
+                        footer="Each with a unique QR identifier"
+                      />
+                      <StatCard
+                        index={3}
+                        label="Treatments recorded"
+                        value={stats?.totalTreatments || 0}
+                        icon={FileCheck}
+                        tone="emerald"
+                        footer={
+                          <button
+                            onClick={() => handleTabChange('treatments')}
+                            className="group/link inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                          >
+                            View all records
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover/link:translate-x-0.5" />
+                          </button>
+                        }
+                      />
                     </div>
 
-                    {/* Quick Activity Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {/* Pending Applications */}
-                      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                              <Stethoscope className="w-5 h-5 text-orange-500" />
-                              Pending Doctor Applications
-                            </h3>
-                            <button
-                              onClick={() => handleTabChange('doctors')}
-                              className="text-xs font-bold text-emerald-700 hover:underline"
-                            >
-                              Manage all →
-                            </button>
+                      <section className={`${CARD} animate-fade-up`} style={{ animationDelay: '240ms' }}>
+                        <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-100">
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                              <Stethoscope className="h-4 w-4" />
+                            </span>
+                            <div>
+                              <h3 className="text-[15px] font-semibold text-slate-900">Pending applications</h3>
+                              <p className="text-xs text-slate-500">Doctors awaiting verification</p>
+                            </div>
                           </div>
-
-                          {doctors.filter((d: any) => d.verificationStatus === 'PENDING').length === 0 ? (
-                            <div className="py-8 text-center text-sm text-gray-400">
-                              <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                              All doctors are verified! No pending applications.
-                            </div>
+                          <button
+                            onClick={() => handleTabChange('doctors')}
+                            className="group/link inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                          >
+                            Manage all
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover/link:translate-x-0.5" />
+                          </button>
+                        </div>
+                        <div className="px-5 sm:px-6 py-2">
+                          {pendingDoctors.length === 0 ? (
+                            <EmptyState icon={CheckCircle} message="All doctors are verified. No pending applications." />
                           ) : (
-                            <div className="space-y-3">
-                              {doctors
-                                .filter((d: any) => d.verificationStatus === 'PENDING')
-                                .slice(0, 4)
-                                .map((doc: any) => (
-                                  <div key={doc.id} className="p-3.5 bg-gray-50/70 border border-gray-100 rounded-xl flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-bold text-gray-900 truncate">{doc.name}</p>
-                                      <p className="text-xs text-gray-500">{doc.specialization || 'General Practitioner'} • Lic: {doc.licenseNumber || 'N/A'}</p>
-                                    </div>
-                                    <button
-                                      onClick={() => handleTabChange('doctors')}
-                                      className="px-3 py-1.5 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
-                                    >
-                                      Review
-                                    </button>
+                            <ul className="divide-y divide-slate-100">
+                              {pendingDoctors.slice(0, 4).map((doc: any, i: number) => (
+                                <li
+                                  key={doc.id}
+                                  className="flex items-center gap-3 py-3 animate-fade-up"
+                                  style={{ animationDelay: `${300 + i * 50}ms` }}
+                                >
+                                  <Initials name={doc.user?.name} tone="amber" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-semibold text-slate-900 truncate">{doc.user?.name || 'Unnamed doctor'}</p>
+                                    <p className="text-xs text-slate-500 truncate">
+                                      {doc.specialization || 'General practitioner'} · Lic {doc.licenseNumber || 'N/A'}
+                                    </p>
                                   </div>
-                                ))}
-                            </div>
+                                  <button
+                                    onClick={() => handleTabChange('doctors')}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold transition-colors shrink-0"
+                                  >
+                                    Review
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
                           )}
                         </div>
-                      </div>
+                      </section>
 
                       {/* Recent Treatments */}
-                      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                              <FileCheck className="w-5 h-5 text-emerald-600" />
-                              Recent Treatment Consultations
-                            </h3>
-                            <button
-                              onClick={() => handleTabChange('treatments')}
-                              className="text-xs font-bold text-emerald-700 hover:underline"
-                            >
-                              View all →
-                            </button>
-                          </div>
-
-                          {treatments.length === 0 ? (
-                            <div className="py-8 text-center text-sm text-gray-400">
-                              <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                              No consultation records logged yet.
+                      <section className={`${CARD} animate-fade-up`} style={{ animationDelay: '300ms' }}>
+                        <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-100">
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                              <FileCheck className="h-4 w-4" />
+                            </span>
+                            <div>
+                              <h3 className="text-[15px] font-semibold text-slate-900">Recent consultations</h3>
+                              <p className="text-xs text-slate-500">Latest treatment records</p>
                             </div>
+                          </div>
+                          <button
+                            onClick={() => handleTabChange('treatments')}
+                            className="group/link inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                          >
+                            View all
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover/link:translate-x-0.5" />
+                          </button>
+                        </div>
+                        <div className="px-5 sm:px-6 py-2">
+                          {treatments.length === 0 ? (
+                            <EmptyState icon={Inbox} message="No consultation records logged yet." />
                           ) : (
-                            <div className="space-y-3">
-                              {treatments.slice(0, 4).map((t: any) => (
-                                <div key={t.id} className="p-3.5 bg-gray-50/70 border border-gray-100 rounded-xl flex items-center justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-bold text-gray-900 truncate">
-                                        {t.condition || t.diagnosis || 'Clinical Consultation'}
+                            <ul className="divide-y divide-slate-100">
+                              {treatments.slice(0, 4).map((t: any, i: number) => (
+                                <li
+                                  key={t.id}
+                                  className="flex items-center gap-3 py-3 animate-fade-up"
+                                  style={{ animationDelay: `${360 + i * 50}ms` }}
+                                >
+                                  <Initials name={t.patient?.name} tone="emerald" />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="text-sm font-semibold text-slate-900 truncate">
+                                        {t.condition || t.diagnosis || 'Clinical consultation'}
                                       </span>
-                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                                        t.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
-                                      }`}>
-                                        {t.status}
-                                      </span>
+                                      <StatusBadge status={t.status} />
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-0.5">
-                                      Patient: {t.patient?.name || 'Unknown'} • Dr: {t.doctor?.name || 'Unknown'}
+                                    <p className="text-xs text-slate-500 truncate mt-0.5">
+                                      {t.patient?.name || 'Unknown patient'} · {withDr(t.doctor?.name)}
                                     </p>
                                   </div>
                                   <button
                                     onClick={() => handleOpenTreatmentDetails(t)}
-                                    className="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+                                    className={`${BTN_SECONDARY} px-3 py-1.5 text-xs shrink-0`}
                                   >
                                     Details
                                   </button>
-                                </div>
+                                </li>
                               ))}
-                            </div>
+                            </ul>
                           )}
                         </div>
-                      </div>
+                      </section>
                     </div>
                   </>
                 )}
@@ -603,76 +833,67 @@ export default function AdminDashboard() {
               <>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">Manage Doctors</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Approve, reject, create, edit, or remove medical personnel.</p>
+                    <h1 className={H1}>Manage Doctors</h1>
+                    <p className={SUBTITLE}>Approve, reject, create, edit, or remove medical personnel.</p>
                   </div>
                   <button
                     onClick={openAddDoctor}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0b3b2c] hover:bg-[#082a1f] text-white font-bold text-sm rounded-xl transition-colors shadow-sm self-start sm:self-auto"
+                    className={`${BTN_PRIMARY} px-4 py-2.5 text-sm self-start sm:self-auto`}
                   >
                     <Plus className="w-4 h-4" /> Add Doctor
                   </button>
                 </div>
 
                 {/* Filter / Search Bar */}
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <div className="mb-5 relative max-w-xl">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search by doctor name, email, specialization, or license..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                    className={`${INPUT} pl-10 pr-4 py-2.5`}
                   />
                 </div>
 
                 {loading ? (
-                  <div className="p-12 text-center text-gray-500 flex flex-col items-center">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-                    <p>Loading doctors...</p>
-                  </div>
+                  <LoadingState label="Loading doctors..." />
                 ) : filteredDoctors.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-                    <p className="text-gray-500 font-medium">No doctors found matching your query.</p>
+                  <div className={`${CARD} border-dashed`}>
+                    <EmptyState icon={Search} message="No doctors found matching your query." />
                   </div>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className={`${CARD} overflow-hidden`}>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[760px]">
-                        <thead className="bg-gray-50/70 border-b border-gray-100">
+                        <thead className="bg-slate-50/80 border-b border-slate-200/70">
                           <tr>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Doctor</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">License</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Specialization</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-center">Documents</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                            <th className={TH}>Doctor</th>
+                            <th className={TH}>License</th>
+                            <th className={TH}>Specialization</th>
+                            <th className={TH}>Status</th>
+                            <th className={`${TH} text-center`}>Documents</th>
+                            <th className={`${TH} text-right`}>Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-slate-100">
                           {filteredDoctors.map((doc: any) => (
-                            <tr key={doc.id} className="hover:bg-gray-50/60 transition-colors">
+                            <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors duration-150">
                               <td className="px-4 sm:px-6 py-4">
-                                <div className="text-[14px] font-bold text-gray-900">{doc.user?.name || 'Unnamed Doctor'}</div>
-                                <div className="text-[12px] text-gray-500">{doc.user?.email}</div>
+                                <div className="text-[14px] font-bold text-slate-900">{doc.user?.name || 'Unnamed Doctor'}</div>
+                                <div className="text-[12px] text-slate-500">{doc.user?.email}</div>
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-[13.5px] text-gray-700 font-medium">
+                              <td className="px-4 sm:px-6 py-4 text-[13.5px] text-slate-700 font-medium">
                                 {doc.licenseNumber || '—'}
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-[13.5px] text-gray-700">
+                              <td className="px-4 sm:px-6 py-4 text-[13.5px] text-slate-700">
                                 {doc.specialization || 'General'}
                               </td>
                               <td className="px-4 sm:px-6 py-4">
                                 <div className="flex flex-col gap-1 items-start">
-                                  <span className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md uppercase ${
-                                    doc.verificationStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-800' :
-                                    doc.verificationStatus === 'PENDING' ? 'bg-orange-50 text-orange-700' :
-                                    'bg-red-50 text-red-700'
-                                  }`}>
-                                    {doc.verificationStatus}
-                                  </span>
+                                  <StatusBadge status={doc.verificationStatus} />
                                   {doc.verificationStatus === 'REJECTED' && doc.rejectionReason && (
-                                    <span className="text-[11px] text-red-600 italic max-w-[200px] truncate" title={doc.rejectionReason}>
+                                    <span className="text-[11px] text-rose-600 italic max-w-[200px] truncate" title={doc.rejectionReason}>
                                       Reason: {doc.rejectionReason}
                                     </span>
                                   )}
@@ -705,7 +926,7 @@ export default function AdminDashboard() {
                                     </a>
                                   ) : null}
                                   {!doc.verificationDocumentUrl && !doc.qualificationDocumentUrl && (
-                                    <span className="text-xs text-gray-400">None</span>
+                                    <span className="text-xs text-slate-400">None</span>
                                   )}
                                 </div>
                               </td>
@@ -726,7 +947,7 @@ export default function AdminDashboard() {
                                           setRejectionReason('');
                                           setRejectModalOpen(true);
                                         }}
-                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                         title="Reject with Reason"
                                       >
                                         <XCircle className="w-4 h-4" />
@@ -735,7 +956,7 @@ export default function AdminDashboard() {
                                   )}
                                   <button
                                     onClick={() => openEditDoctor(doc)}
-                                    className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors"
                                     title="Edit Doctor Details"
                                   >
                                     <Edit2 className="w-4 h-4" />
@@ -749,7 +970,7 @@ export default function AdminDashboard() {
                                       });
                                       setDeleteConfirmOpen(true);
                                     }}
-                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                     title="Delete Doctor"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -771,69 +992,66 @@ export default function AdminDashboard() {
               <>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">Manage Patients</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">View and manage registered patients and their QR code identifiers.</p>
+                    <h1 className={H1}>Manage Patients</h1>
+                    <p className={SUBTITLE}>View and manage registered patients and their QR code identifiers.</p>
                   </div>
                   <button
                     onClick={openAddPatient}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0b3b2c] hover:bg-[#082a1f] text-white font-bold text-sm rounded-xl transition-colors shadow-sm self-start sm:self-auto"
+                    className={`${BTN_PRIMARY} px-4 py-2.5 text-sm self-start sm:self-auto`}
                   >
                     <Plus className="w-4 h-4" /> Add Patient
                   </button>
                 </div>
 
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <div className="mb-5 relative max-w-xl">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search by patient name, email, or QR identifier..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                    className={`${INPUT} pl-10 pr-4 py-2.5`}
                   />
                 </div>
 
                 {loading ? (
-                  <div className="p-12 text-center text-gray-500 flex flex-col items-center">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-                    <p>Loading patients...</p>
-                  </div>
+                  <LoadingState label="Loading patients..." />
                 ) : filteredPatients.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-                    <p className="text-gray-500 font-medium">No patients found matching your query.</p>
+                  <div className={`${CARD} border-dashed`}>
+                    <EmptyState icon={Search} message="No patients found matching your query." />
                   </div>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className={`${CARD} overflow-hidden`}>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[640px]">
-                        <thead className="bg-gray-50/70 border-b border-gray-100">
+                        <thead className="bg-slate-50/80 border-b border-slate-200/70">
                           <tr>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Patient</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Unique QR Identifier</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Registered On</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                            <th className={TH}>Patient</th>
+                            <th className={TH}>Unique QR Identifier</th>
+                            <th className={TH}>Registered On</th>
+                            <th className={`${TH} text-right`}>Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-slate-100">
                           {filteredPatients.map((pat: any) => (
-                            <tr key={pat.id} className="hover:bg-gray-50/60 transition-colors">
+                            <tr key={pat.id} className="hover:bg-slate-50/70 transition-colors duration-150">
                               <td className="px-4 sm:px-6 py-4">
-                                <div className="text-[14px] font-bold text-gray-900">{pat.name || pat.user?.name}</div>
-                                <div className="text-[12px] text-gray-500">{pat.email || pat.user?.email}</div>
+                                <div className="text-[14px] font-bold text-slate-900">{pat.name}</div>
+                                <div className="text-[12px] text-slate-500">{pat.email}</div>
                               </td>
                               <td className="px-4 sm:px-6 py-4">
-                                <span className="font-mono text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-md">
-                                  {pat.qrCodeIdentifier || pat.patientProfile?.qrCodeIdentifier || '—'}
+                                <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-md ring-1 ring-inset ring-slate-200/70">
+                                  {pat.qrCodeIdentifier || '—'}
                                 </span>
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-[13px] text-gray-600">
+                              <td className="px-4 sm:px-6 py-4 text-[13px] text-slate-600">
                                 {pat.createdAt ? new Date(pat.createdAt).toLocaleDateString() : '—'}
                               </td>
                               <td className="px-4 sm:px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     onClick={() => openEditPatient(pat)}
-                                    className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors"
                                     title="Edit Patient"
                                   >
                                     <Edit2 className="w-4 h-4" />
@@ -843,11 +1061,11 @@ export default function AdminDashboard() {
                                       setDeleteTarget({
                                         type: 'patient',
                                         id: pat.id,
-                                        name: pat.name || pat.user?.name || 'Patient',
+                                        name: pat.name || 'Patient',
                                       });
                                       setDeleteConfirmOpen(true);
                                     }}
-                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                     title="Delete Patient"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -869,72 +1087,65 @@ export default function AdminDashboard() {
               <>
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">All Treatments</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Clinical consultation records created by verified doctors.</p>
+                    <h1 className={H1}>All Treatments</h1>
+                    <p className={SUBTITLE}>Clinical consultation records created by verified doctors.</p>
                   </div>
                 </div>
 
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <div className="mb-5 relative max-w-xl">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search by doctor, patient, or medical condition..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                    className={`${INPUT} pl-10 pr-4 py-2.5`}
                   />
                 </div>
 
                 {loading ? (
-                  <div className="p-12 text-center text-gray-500 flex flex-col items-center">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-                    <p>Loading treatments...</p>
-                  </div>
+                  <LoadingState label="Loading treatments..." />
                 ) : filteredTreatments.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-                    <p className="text-gray-500 font-medium">No treatment records recorded yet.</p>
+                  <div className={`${CARD} border-dashed`}>
+                    <EmptyState icon={Search} message="No treatment records recorded yet." />
                   </div>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className={`${CARD} overflow-hidden`}>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[760px]">
-                        <thead className="bg-gray-50/70 border-b border-gray-100">
+                        <thead className="bg-slate-50/80 border-b border-slate-200/70">
                           <tr>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Doctor</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Patient</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Condition & Diagnosis</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider text-right">Action</th>
+                            <th className={TH}>Date</th>
+                            <th className={TH}>Doctor</th>
+                            <th className={TH}>Patient</th>
+                            <th className={TH}>Condition & Diagnosis</th>
+                            <th className={TH}>Status</th>
+                            <th className={`${TH} text-right`}>Action</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-slate-100">
                           {filteredTreatments.map((t: any) => (
-                            <tr key={t.id} className="hover:bg-gray-50/60 transition-colors">
-                              <td className="px-4 sm:px-6 py-4 text-xs font-semibold text-gray-600">
+                            <tr key={t.id} className="hover:bg-slate-50/70 transition-colors duration-150">
+                              <td className="px-4 sm:px-6 py-4 text-xs font-semibold text-slate-600">
                                 {new Date(t.createdAt).toLocaleDateString()}
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-sm font-bold text-gray-900">
-                                Dr. {t.doctor?.name || 'Unknown'}
+                              <td className="px-4 sm:px-6 py-4 text-sm font-bold text-slate-900">
+                                {withDr(t.doctor?.name)}
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-sm text-gray-800">
+                              <td className="px-4 sm:px-6 py-4 text-sm text-slate-800">
                                 {t.patient?.name || 'Unknown Patient'}
                               </td>
                               <td className="px-4 sm:px-6 py-4">
-                                <div className="text-sm font-bold text-gray-900">{t.condition || 'General Consultation'}</div>
-                                <div className="text-xs text-gray-500 truncate max-w-xs">{t.diagnosis || 'No formal diagnosis noted'}</div>
+                                <div className="text-sm font-bold text-slate-900">{t.condition || 'General Consultation'}</div>
+                                <div className="text-xs text-slate-500 truncate max-w-xs">{t.diagnosis || 'No formal diagnosis noted'}</div>
                               </td>
                               <td className="px-4 sm:px-6 py-4">
-                                <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${
-                                  t.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-700'
-                                }`}>
-                                  {t.status}
-                                </span>
+                                <StatusBadge status={t.status} />
                               </td>
                               <td className="px-4 sm:px-6 py-4 text-right">
                                 <button
                                   onClick={() => handleOpenTreatmentDetails(t)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+                                  className={`${BTN_SECONDARY} px-3 py-1.5 text-xs`}
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   Details
@@ -955,63 +1166,60 @@ export default function AdminDashboard() {
               <>
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">Audit Logs</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Comprehensive audit trail recording who, what, when, and IP address.</p>
+                    <h1 className={H1}>Audit Logs</h1>
+                    <p className={SUBTITLE}>Comprehensive audit trail recording who, what, when, and IP address.</p>
                   </div>
                 </div>
 
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <div className="mb-5 relative max-w-xl">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search logs by action, user, or IP address..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                    className={`${INPUT} pl-10 pr-4 py-2.5`}
                   />
                 </div>
 
                 {loading ? (
-                  <div className="p-12 text-center text-gray-500 flex flex-col items-center">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-                    <p>Loading audit trail...</p>
-                  </div>
+                  <LoadingState label="Loading audit trail..." />
                 ) : filteredLogs.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-                    <p className="text-gray-500 font-medium">No audit logs recorded.</p>
+                  <div className={`${CARD} border-dashed`}>
+                    <EmptyState icon={Search} message="No audit logs recorded." />
                   </div>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className={`${CARD} overflow-hidden`}>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[780px]">
-                        <thead className="bg-gray-50/70 border-b border-gray-100">
+                        <thead className="bg-slate-50/80 border-b border-slate-200/70">
                           <tr>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Timestamp</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">User</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Action</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">IP Address</th>
-                            <th className="px-4 sm:px-6 py-3.5 text-[12px] font-bold text-gray-500 uppercase tracking-wider">Details</th>
+                            <th className={TH}>Timestamp</th>
+                            <th className={TH}>User</th>
+                            <th className={TH}>Action</th>
+                            <th className={TH}>IP Address</th>
+                            <th className={TH}>Details</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-slate-100">
                           {filteredLogs.map((log: any) => (
-                            <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
-                              <td className="px-4 sm:px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                            <tr key={log.id} className="hover:bg-slate-50/70 transition-colors duration-150">
+                              <td className="px-4 sm:px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
                                 {new Date(log.createdAt).toLocaleString()}
                               </td>
                               <td className="px-4 sm:px-6 py-4">
-                                <div className="text-sm font-bold text-gray-900">{log.user?.name || 'System / Deleted User'}</div>
-                                <div className="text-xs text-gray-500">{log.user?.role || 'N/A'}</div>
+                                <div className="text-sm font-bold text-slate-900">{log.user?.name || 'System / Deleted User'}</div>
+                                <div className="text-xs text-slate-500">{log.user?.role || 'N/A'}</div>
                               </td>
                               <td className="px-4 sm:px-6 py-4">
-                                <span className="font-mono text-[11px] font-bold bg-gray-100 text-gray-800 px-2 py-0.5 rounded">
+                                <span className="font-mono text-[11px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
                                   {log.action}
                                 </span>
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-xs font-mono text-gray-600">
+                              <td className="px-4 sm:px-6 py-4 text-xs font-mono text-slate-600">
                                 {log.details?.ip || '127.0.0.1'}
                               </td>
-                              <td className="px-4 sm:px-6 py-4 text-xs text-gray-600 max-w-xs truncate" title={JSON.stringify(log.details)}>
+                              <td className="px-4 sm:px-6 py-4 text-xs text-slate-600 max-w-xs truncate" title={JSON.stringify(log.details)}>
                                 {log.details ? JSON.stringify(log.details) : '—'}
                               </td>
                             </tr>
@@ -1030,81 +1238,81 @@ export default function AdminDashboard() {
 
       {/* MODAL: ADD / EDIT DOCTOR */}
       {doctorModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl relative animate-in fade-in">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl shadow-slate-950/10 border border-slate-200/70 relative animate-scale-in">
             <button
               onClick={() => setDoctorModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
               {doctorModalMode === 'add' ? 'Add New Doctor' : 'Edit Doctor Details'}
             </h3>
             <form onSubmit={handleSaveDoctor} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Full Name</label>
                 <input
                   type="text"
                   required
                   value={doctorForm.name}
                   onChange={(e) => setDoctorForm({ ...doctorForm, name: e.target.value })}
                   placeholder="Dr. Jane Smith"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                  className={`${INPUT} px-3.5 py-2.5`}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Email Address</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
                 <input
                   type="email"
                   required
                   value={doctorForm.email}
                   onChange={(e) => setDoctorForm({ ...doctorForm, email: e.target.value })}
                   placeholder="jane.smith@hospital.com"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                  className={`${INPUT} px-3.5 py-2.5`}
                 />
               </div>
               {doctorModalMode === 'add' && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Initial Password</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Initial Password</label>
                   <input
                     type="password"
                     required
                     value={doctorForm.password}
                     onChange={(e) => setDoctorForm({ ...doctorForm, password: e.target.value })}
                     placeholder="Min 6 characters"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                    className={`${INPUT} px-3.5 py-2.5`}
                   />
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Specialization</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Specialization</label>
                   <input
                     type="text"
                     value={doctorForm.specialization}
                     onChange={(e) => setDoctorForm({ ...doctorForm, specialization: e.target.value })}
                     placeholder="General Medicine"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                    className={`${INPUT} px-3.5 py-2.5`}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">License Number</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">License Number</label>
                   <input
                     type="text"
                     value={doctorForm.licenseNumber}
                     onChange={(e) => setDoctorForm({ ...doctorForm, licenseNumber: e.target.value })}
                     placeholder="e.g. KL-12345"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                    className={`${INPUT} px-3.5 py-2.5`}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Verification Status</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Verification Status</label>
                 <select
                   value={doctorForm.verificationStatus}
                   onChange={(e) => setDoctorForm({ ...doctorForm, verificationStatus: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600 bg-white"
+                  className={`${INPUT} px-3.5 py-2.5`}
                 >
                   <option value="APPROVED">APPROVED (Verified)</option>
                   <option value="PENDING">PENDING (Under review)</option>
@@ -1116,14 +1324,14 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setDoctorModalOpen(false)}
-                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
+                  className={`${BTN_SECONDARY} px-4 py-2.5 text-xs`}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2.5 bg-[#0b3b2c] hover:bg-[#082a1f] text-white font-bold text-xs rounded-xl disabled:opacity-50"
+                  className={`${BTN_PRIMARY} px-5 py-2.5 text-xs`}
                 >
                   {actionLoading ? 'Saving...' : doctorModalMode === 'add' ? 'Create Doctor' : 'Save Changes'}
                 </button>
@@ -1135,19 +1343,19 @@ export default function AdminDashboard() {
 
       {/* MODAL: REJECT DOCTOR WITH REASON */}
       {rejectModalOpen && rejectingDoctor && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl relative animate-in fade-in">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl shadow-slate-950/10 border border-slate-200/70 relative animate-scale-in">
             <button
               onClick={() => setRejectModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-3 text-red-600 mb-3">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
               <ShieldAlert className="w-6 h-6" />
-              <h3 className="text-lg font-bold text-gray-900">Reject Verification</h3>
+              <h3 className="text-lg font-bold text-slate-900">Reject Verification</h3>
             </div>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-slate-500 mb-4">
               Specify the reason why <strong>{rejectingDoctor.user?.name}</strong>'s verification is being rejected. This reason will be displayed on their dashboard.
             </p>
             <textarea
@@ -1156,13 +1364,13 @@ export default function AdminDashboard() {
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               placeholder="e.g. License document expired or blurry. Please upload a clear copy of your valid state medical council certificate."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-500 mb-4"
+              className={`${INPUT} px-3.5 py-2.5 mb-4 focus:border-rose-500 focus:ring-rose-500/10`}
             />
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setRejectModalOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
+                className={`${BTN_SECONDARY} px-4 py-2 text-xs`}
               >
                 Cancel
               </button>
@@ -1170,7 +1378,7 @@ export default function AdminDashboard() {
                 type="button"
                 disabled={actionLoading || !rejectionReason.trim()}
                 onClick={() => handleVerifyDoctor(rejectingDoctor.id, 'REJECTED', rejectionReason)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl disabled:opacity-50"
+                className={`${BTN_DANGER} px-4 py-2 text-xs`}
               >
                 {actionLoading ? 'Rejecting...' : 'Confirm Rejection'}
               </button>
@@ -1181,66 +1389,66 @@ export default function AdminDashboard() {
 
       {/* MODAL: ADD / EDIT PATIENT */}
       {patientModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl relative animate-in fade-in">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl shadow-slate-950/10 border border-slate-200/70 relative animate-scale-in">
             <button
               onClick={() => setPatientModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
               {patientModalMode === 'add' ? 'Add New Patient' : 'Edit Patient'}
             </h3>
             <form onSubmit={handleSavePatient} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Full Name</label>
                 <input
                   type="text"
                   required
                   value={patientForm.name}
                   onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
                   placeholder="John Doe"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                  className={`${INPUT} px-3.5 py-2.5`}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Email Address</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
                 <input
                   type="email"
                   required
                   value={patientForm.email}
                   onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })}
                   placeholder="patient@example.com"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                  className={`${INPUT} px-3.5 py-2.5`}
                 />
               </div>
               {patientModalMode === 'add' && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Initial Password</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Initial Password</label>
                   <input
                     type="password"
                     required
                     value={patientForm.password}
                     onChange={(e) => setPatientForm({ ...patientForm, password: e.target.value })}
                     placeholder="Min 6 characters"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-600"
+                    className={`${INPUT} px-3.5 py-2.5`}
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">A unique cryptographic QR identifier will automatically be generated.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">A unique cryptographic QR identifier will automatically be generated.</p>
                 </div>
               )}
               <div className="pt-2 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setPatientModalOpen(false)}
-                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
+                  className={`${BTN_SECONDARY} px-4 py-2.5 text-xs`}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2.5 bg-[#0b3b2c] hover:bg-[#082a1f] text-white font-bold text-xs rounded-xl disabled:opacity-50"
+                  className={`${BTN_PRIMARY} px-5 py-2.5 text-xs`}
                 >
                   {actionLoading ? 'Saving...' : patientModalMode === 'add' ? 'Create Patient' : 'Save Changes'}
                 </button>
@@ -1252,17 +1460,17 @@ export default function AdminDashboard() {
 
       {/* MODAL: DELETE CONFIRMATION */}
       {deleteConfirmOpen && deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl relative animate-in fade-in">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete {deleteTarget.type === 'doctor' ? 'Doctor' : 'Patient'} Account</h3>
-            <p className="text-xs text-gray-500 mb-6 leading-relaxed">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl shadow-slate-950/10 border border-slate-200/70 relative animate-scale-in">
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Delete {deleteTarget.type === 'doctor' ? 'Doctor' : 'Patient'} Account</h3>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
               Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This will permanently delete the user account and associated profile records.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
+                className={`${BTN_SECONDARY} px-4 py-2 text-xs`}
               >
                 Cancel
               </button>
@@ -1270,7 +1478,7 @@ export default function AdminDashboard() {
                 type="button"
                 disabled={actionLoading}
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl disabled:opacity-50"
+                className={`${BTN_DANGER} px-4 py-2 text-xs`}
               >
                 {actionLoading ? 'Deleting...' : 'Delete Permanently'}
               </button>
@@ -1280,26 +1488,22 @@ export default function AdminDashboard() {
       )}
       {/* MODAL: TREATMENT PRESCRIPTIONS POPUP */}
       {treatmentModalOpen && selectedTreatment && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative animate-in fade-in max-h-[90vh] overflow-y-auto space-y-6">
-            <div className="flex justify-between items-start border-b border-gray-100 pb-4">
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl shadow-slate-950/10 border border-slate-200/70 relative animate-scale-in max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-4">
               <div>
-                <span className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md uppercase ${
-                  selectedTreatment.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-700'
-                }`}>
-                  {selectedTreatment.status}
-                </span>
-                <h3 className="text-xl font-bold text-gray-900 mt-2">
+                <StatusBadge status={selectedTreatment.status} />
+                <h3 className="text-xl font-bold text-slate-900 mt-2">
                   {selectedTreatment.condition || 'Consultation Details'}
                 </h3>
-                <p className="text-xs text-gray-400 mt-0.5">Recorded on {new Date(selectedTreatment.createdAt).toLocaleDateString()}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Recorded on {new Date(selectedTreatment.createdAt).toLocaleDateString()}</p>
               </div>
               <button
                 onClick={() => {
                   setTreatmentModalOpen(false);
                   setSelectedTreatment(null);
                 }}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1309,20 +1513,20 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 bg-emerald-50/70 rounded-xl border border-emerald-100">
                 <span className="text-[10px] font-bold uppercase text-emerald-800">Prescribing Doctor</span>
-                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.doctor?.name || 'Unknown Doctor'}</p>
-                <p className="text-xs text-gray-500">{selectedTreatment.doctor?.email}</p>
+                <p className="font-bold text-slate-900 text-sm mt-1">{selectedTreatment.doctor?.name || 'Unknown Doctor'}</p>
+                <p className="text-xs text-slate-500">{selectedTreatment.doctor?.email}</p>
               </div>
               <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100">
                 <span className="text-[10px] font-bold uppercase text-blue-800">Patient</span>
-                <p className="font-bold text-gray-900 text-sm mt-1">{selectedTreatment.patient?.name || 'Unknown Patient'}</p>
-                <p className="text-xs text-gray-500">{selectedTreatment.patient?.email}</p>
+                <p className="font-bold text-slate-900 text-sm mt-1">{selectedTreatment.patient?.name || 'Unknown Patient'}</p>
+                <p className="text-xs text-slate-500">{selectedTreatment.patient?.email}</p>
               </div>
             </div>
 
             {/* Prescriptions List */}
-            <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200/80 space-y-3">
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Pill className="w-4 h-4 text-emerald-600" />
                   Prescriptions Given by Doctor
                 </h4>
@@ -1332,21 +1536,21 @@ export default function AdminDashboard() {
               </div>
 
               {treatmentModalLoading ? (
-                <div className="p-6 text-center text-xs text-gray-400">Loading prescriptions...</div>
+                <div className="p-6 text-center text-xs text-slate-400">Loading prescriptions...</div>
               ) : (selectedTreatment.prescriptions && selectedTreatment.prescriptions.length > 0) ? (
                 <div className="space-y-2.5">
                   {selectedTreatment.prescriptions.map((p: any, idx: number) => {
-                    const medName = p.medicineName || p.medication || p.name || 'Unnamed Medicine';
+                    const medName = p.medicineName || 'Unnamed Medicine';
                     return (
-                      <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
+                      <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="w-5 h-5 rounded bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center">
                               {idx + 1}
                             </span>
-                            <span className="font-bold text-gray-900 text-sm">{medName}</span>
+                            <span className="font-bold text-slate-900 text-sm">{medName}</span>
                             {p.strength && (
-                              <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-medium">
+                              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
                                 {p.strength}
                               </span>
                             )}
@@ -1358,12 +1562,12 @@ export default function AdminDashboard() {
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 pt-1 border-t border-gray-50">
-                          {p.frequency && <p><span className="font-semibold text-gray-700">Frequency:</span> {p.frequency}</p>}
-                          {p.duration && <p><span className="font-semibold text-gray-700">Duration:</span> {p.duration}</p>}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 pt-1 border-t border-slate-50">
+                          {p.frequency && <p><span className="font-semibold text-slate-700">Frequency:</span> {p.frequency}</p>}
+                          {p.duration && <p><span className="font-semibold text-slate-700">Duration:</span> {p.duration}</p>}
                           {p.instructions && (
-                            <p className="sm:col-span-2 text-gray-600 italic bg-gray-50 p-2 rounded-lg">
-                              <span className="font-semibold text-gray-700 not-italic">Instructions: </span>
+                            <p className="sm:col-span-2 text-slate-600 italic bg-slate-50 p-2 rounded-lg">
+                              <span className="font-semibold text-slate-700 not-italic">Instructions: </span>
                               {p.instructions}
                             </p>
                           )}
@@ -1373,7 +1577,7 @@ export default function AdminDashboard() {
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-gray-500 italic p-4 bg-white rounded-xl border text-center">
+                <p className="text-xs text-slate-500 italic p-4 bg-white rounded-xl border text-center">
                   No prescriptions recorded for this consultation.
                 </p>
               )}
@@ -1384,27 +1588,27 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {selectedTreatment.diagnosis && (
                   <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Diagnosis</h4>
-                    <p className="p-3 bg-gray-50 rounded-xl text-xs text-gray-800 font-medium border border-gray-100">{selectedTreatment.diagnosis}</p>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Diagnosis</h4>
+                    <p className="p-3 bg-slate-50 rounded-xl text-xs text-slate-800 font-medium border border-slate-100">{selectedTreatment.diagnosis}</p>
                   </div>
                 )}
                 {selectedTreatment.doctorNotes && (
                   <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Doctor Notes</h4>
-                    <p className="p-3 bg-gray-50 rounded-xl text-xs text-gray-700 border border-gray-100">{selectedTreatment.doctorNotes}</p>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Doctor Notes</h4>
+                    <p className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 border border-slate-100">{selectedTreatment.doctorNotes}</p>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex justify-end pt-3 border-t border-gray-100">
+            <div className="flex justify-end pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => {
                   setTreatmentModalOpen(false);
                   setSelectedTreatment(null);
                 }}
-                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs rounded-xl"
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition-colors dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
               >
                 Close
               </button>

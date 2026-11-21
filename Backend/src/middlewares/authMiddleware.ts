@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
+import prisma from '../utils/prisma';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -10,7 +11,7 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.header('Authorization');
 
   if (!authHeader) {
@@ -25,10 +26,20 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
+    
+    // Fetch live user from database so role updates take effect immediately
+    let liveUser: { id: string; role: Role; email: string } | null = null;
+    if (decoded.id) {
+      liveUser = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, role: true, email: true },
+      });
+    }
+
     req.user = {
-      id: decoded.id,
-      role: decoded.role,
-      email: decoded.email,
+      id: liveUser ? liveUser.id : decoded.id,
+      role: liveUser ? liveUser.role : decoded.role,
+      email: liveUser ? liveUser.email : decoded.email,
     };
     next();
   } catch (err) {
@@ -38,7 +49,8 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
 export const requireRole = (roles: Role[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    // ADMIN has superuser permission across all roles
+    if (!req.user || (!roles.includes(req.user.role) && req.user.role !== 'ADMIN')) {
       return res.status(403).json({ error: 'Access forbidden: Insufficient permissions' });
     }
     next();

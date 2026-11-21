@@ -1,0 +1,7 @@
+Starting backend... 
+
+> sih-project-2026@1.0.0 start
+> tsx src/server.ts
+
+◇ injected env (0) from .env
+Server is running on port 3000 (http://localhost:3000)

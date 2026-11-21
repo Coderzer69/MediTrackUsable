@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { QrCode, Search, UserCheck, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
 
 interface PatientSelectionViewProps {
@@ -8,21 +9,28 @@ interface PatientSelectionViewProps {
 }
 
 export default function PatientSelectionView({ onPatientSelected }: PatientSelectionViewProps) {
+  const { t } = useTranslation();
   const [manualId, setManualId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeMode, setActiveMode] = useState<'scan' | 'manual'>('scan');
 
   const handleScanOrSubmit = async (text: string) => {
-    if (loading || !text.trim()) return;
+    const raw = text?.trim();
+    if (loading || !raw) return;
+
+    // Clean code if a full URL or prefix was scanned (e.g. from QR code)
+    const cleanId = raw.includes('/') ? raw.split('/').pop()?.trim() || raw : raw;
+
     setLoading(true);
     setError('');
     
     try {
-      const res = await api.get(`/doctor/patient/${text.trim()}`);
+      const res = await api.get(`/doctor/patient/${encodeURIComponent(cleanId)}`);
       onPatientSelected(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to find patient. Please check the ID.');
+      setError(err.response?.data?.error || t('doctor.patientNotFound'));
+    } finally {
       setLoading(false);
     }
   };
@@ -34,8 +42,8 @@ export default function PatientSelectionView({ onPatientSelected }: PatientSelec
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-700">
             <UserCheck className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">Identify Patient</h1>
-          <p className="text-gray-500 font-medium">Scan the patient's QR code or manually enter their ID to start a new treatment.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">{t('doctor.scannerTitle')}</h1>
+          <p className="text-gray-500 font-medium">{t('doctor.scannerSubtitle')}</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-gray-100 shadow-[0_2px_20px_rgb(0,0,0,0.03)] overflow-hidden">
@@ -43,21 +51,21 @@ export default function PatientSelectionView({ onPatientSelected }: PatientSelec
           <div className="flex border-b border-gray-100">
             <button
               onClick={() => setActiveMode('scan')}
-              className={`flex-1 py-4 text-[14.5px] font-bold flex items-center justify-center gap-2 transition-colors ${
+              className={`flex-1 py-4 text-[14.5px] font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                 activeMode === 'scan' ? 'bg-[#f0f7f4] text-[#0b5c46] border-b-2 border-[#0b5c46]' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
               <QrCode className="w-[18px] h-[18px]" />
-              Scan QR Code
+              {t('doctor.scanQrTab')}
             </button>
             <button
               onClick={() => setActiveMode('manual')}
-              className={`flex-1 py-4 text-[14.5px] font-bold flex items-center justify-center gap-2 transition-colors ${
+              className={`flex-1 py-4 text-[14.5px] font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                 activeMode === 'manual' ? 'bg-[#f0f7f4] text-[#0b5c46] border-b-2 border-[#0b5c46]' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
               <Search className="w-[18px] h-[18px]" />
-              Manual Entry
+              {t('doctor.manualEntryTab')}
             </button>
           </div>
 
@@ -79,35 +87,35 @@ export default function PatientSelectionView({ onPatientSelected }: PatientSelec
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-500 font-medium">Position the QR code within the frame to scan automatically.</p>
+                <p className="text-sm text-gray-500 font-medium text-center">{t('doctor.positionQr')}</p>
               </div>
             ) : (
               <div className="flex flex-col gap-5 py-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[14px] font-bold text-gray-900">Patient ID</label>
+                  <label className="text-[14px] font-bold text-gray-900">{t('doctor.patientIdLabel')}</label>
                   <input
                     type="text"
                     value={manualId}
                     onChange={(e) => setManualId(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleScanOrSubmit(manualId)}
-                    placeholder="Enter Patient ID (e.g. PT-12345)"
+                    placeholder={t('doctor.patientIdPlaceholder')}
                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[15px] font-medium text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                   />
                 </div>
                 <button
                   onClick={() => handleScanOrSubmit(manualId)}
                   disabled={loading || !manualId.trim()}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#0b5c46] hover:bg-[#084836] text-white font-bold text-[14.5px] rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#0b5c46] hover:bg-[#084836] text-white font-bold text-[14.5px] rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-[18px] h-[18px] animate-spin" />
-                      Searching...
+                      {t('common.loading')}
                     </>
                   ) : (
                     <>
                       <Search className="w-[18px] h-[18px]" />
-                      Find Patient
+                      {t('doctor.findPatient')}
                     </>
                   )}
                 </button>
