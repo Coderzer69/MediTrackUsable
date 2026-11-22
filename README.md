@@ -1,144 +1,339 @@
-# MediTrack
+# MediTrack 🩺
 
-**E-prescriptions and digital medical records for safer healthcare.** Doctors dictate in any language, and patients get a verified prescription in their own language, as text, voice and email. Medicine names always stay in English.
+### AI-Powered Digital Healthcare & Multilingual E-Prescription Platform
 
-Built by **Team Valyrian Minds** (ABES Engineering College) for **HackForge 2K26**: Urvish Bhardwaj, Siddharth Rawat, Shivam Lohkana, Sujal Kumar.
+MediTrack is an intelligent digital healthcare platform designed to simplify doctor-patient interactions through AI-assisted consultations, multilingual e-prescriptions, secure medical records, and streamlined healthcare management.
 
-## Live demo
+It brings patients, doctors, and administrators together in one platform, making healthcare documentation more accessible, organized, and efficient.
 
-| | Link |
+## 🌟 Key Features
+
+### 👨‍⚕️ Doctor Portal
+- **AI-assisted prescription generation:** Turn consultation details into structured prescription content with the help of Google Gemini.
+- **Voice-to-text consultation:** Dictate consultations using ElevenLabs Scribe, including multilingual and mixed-language speech.
+- **Prescription review:** Doctors can review and confirm AI-assisted content before it is finalized.
+- **QR-based patient lookup:** Find a patient's profile using their QR code.
+- **Consent-based medical history:** Request access to a patient's history; access is granted only after patient approval.
+- **Doctor verification:** Doctor accounts require administrator approval before prescription-related access is enabled.
+- **Treatment management:** Create and manage patient treatments and prescriptions.
+
+### 🧑‍🦽 Patient Portal
+- **Personalized dashboard:** View prescriptions and healthcare information in one place.
+- **Medical records vault:** Upload and manage previous reports and prescriptions, including PDF, JPG, and PNG files.
+- **Multilingual prescriptions:** Read translated prescription content in a preferred language.
+- **Voice playback:** Listen to prescriptions using text-to-speech.
+- **Email delivery:** Receive prescription copies through email.
+- **QR-based identity:** Make patient identification during consultations easier.
+- **Consent controls:** Approve or deny doctor requests to access medical history.
+
+### 🛡️ Admin Portal
+- **Doctor verification:** Approve, reject, or suspend doctor accounts.
+- **User management:** Manage patient and doctor accounts.
+- **Treatment oversight:** Review and manage treatment records.
+- **Live synchronization:** Reflect database changes in the administrative interface.
+- **Audit logs:** Track sensitive actions across the platform.
+
+### 🌐 Multilingual Experience
+The application interface supports:
+- English
+- Hindi
+- Bengali
+- Marathi
+- Tamil
+- Telugu
+
+Prescription translation supports:
+- English
+- Hindi
+- Bengali
+- Marathi
+- Tamil
+- Telugu
+- Gujarati
+- Kannada
+- Malayalam
+- Punjabi
+- Urdu
+
+Medicine names are kept in English during prescription translation to help avoid ambiguity.
+
+## 🤖 AI & Voice Capabilities
+
+| Technology | Purpose |
 |---|---|
-| **Main app** (patients and doctors) | https://meditrack-web-k2xy-k2xy.onrender.com |
-| **Admin portal** | https://meditrack-admin-k2xy-k2xy.onrender.com |
-| **API** | https://meditrack-api-k2xy-k2xy.onrender.com |
-| API health | https://meditrack-api-k2xy-k2xy.onrender.com/health |
-| Source code | https://github.com/Coderzer69/MediTrackUsable |
+| Google Gemini | Consultation structuring and prescription translation |
+| ElevenLabs Scribe | Speech-to-text for doctor consultations |
+| ElevenLabs Text-to-Speech | Voice playback for patient prescriptions |
+| Brevo | Transactional email delivery |
 
-> The API runs on Render's free plan and sleeps after 15 minutes without traffic. The first request after that can take 30–60 seconds; open the health link once to wake it up.
+> **Clinical safety:** AI-generated content is assistive, not a substitute for professional medical judgment. Doctors must review and confirm prescription content before it is used for patient care.
 
-### Demo accounts
+## 🔄 How MediTrack Works
 
-| Role | Email | Password |
-|---|---|---|
-| Admin | `admin@meditrack.com` | `password123` |
-| Doctor | `doctor@meditrack.com` | `password123` |
-| Patient | `patient@meditrack.com` | `password123` |
+1. A patient creates an account and maintains their medical profile.
+2. A doctor registers and completes the administrator verification process.
+3. The doctor identifies the patient using their QR code or patient information.
+4. The doctor requests access to the patient's medical history.
+5. The patient reviews and approves or denies the access request.
+6. The doctor records consultation details through typing or voice dictation.
+7. AI assists with structuring the consultation and preparing prescription content.
+8. The doctor reviews and confirms the prescription.
+9. The patient can access the prescription and related records from their dashboard, including supported translations and audio playback.
 
-A doctor can only prescribe after an admin approves them. If the demo doctor shows "verification pending", approve it in the admin portal under **Doctors**.
+## 🏗️ System Architecture
 
-These are public demo credentials. Change them before using the app with real patient data.
+```mermaid
+flowchart TD
+    P[Patient] --> WEB[React Web Application]
+    D[Doctor] --> WEB
+    A[Administrator] --> ADMIN[React Admin Portal]
+    WEB --> API[Express Backend API]
+    ADMIN --> API
+    API --> DB[(PostgreSQL)]
+    API --> AI[Google Gemini]
+    API --> VOICE[ElevenLabs]
+    API --> EMAIL[Brevo]
+    API --> AUTH[JWT / Google Sign-In]
+```
 
-## Features
+### Application Components
 
-**For doctors**
-- **Voice dictation in any language.** Speak in English, Hindi, Tamil, or a Hindi-English mix. ElevenLabs Scribe transcribes it and Gemini fills in condition, diagnosis and medicines in English. The doctor reviews before confirming.
-- **QR patient lookup.** Scan the patient's QR code to open their profile.
-- **Consent-based history.** Request access to a patient's history; it opens only after the patient approves.
-- **Verified doctors.** Medical registration is checked by an admin before a doctor can prescribe.
+| Component | Responsibility |
+|---|---|
+| Patient and Doctor Application | Patient records, consultations, prescriptions, and account features |
+| Admin Portal | User management, doctor verification, and administrative oversight |
+| Backend API | Authentication, authorization, business logic, integrations, and data access |
+| PostgreSQL Database | Persistent application and medical-record data |
 
-**For patients**
-- **Prescriptions in their own language.** 11 languages: English, Hindi, Bengali, Marathi, Tamil, Telugu, Gujarati, Kannada, Malayalam, Punjabi and Urdu.
-  - Translated text with an English/own-language switch.
-  - A voice recording with a "Listen to your prescription" button (ElevenLabs).
-  - An email copy (Brevo).
-- **Medical records vault.** Upload past reports and prescriptions (PDF, JPG, PNG). Authorised doctors can view them read-only.
-- **QR identity** and control over who sees their history.
+## 🛠️ Technology Stack
 
-**For admins**
-- Approve, reject or suspend doctors; manage patients and treatments.
-- Live sync: database changes appear in the panel within seconds.
-- A full audit log of every sensitive action.
+**Frontend**
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Router
+- i18next
 
-**Interface:** 6 interface languages, plus dark and light mode.
+**Backend**
+- Node.js
+- Express 5
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- JWT authentication
+- Helmet
+- Multer
 
-## How it runs on Render
+**AI & Integrations**
+- Google Gemini
+- ElevenLabs
+- Brevo
+- Google OAuth
 
-The whole monorepo is deployed from one Render Blueprint, [`render.yaml`](render.yaml), on branch `main`. Every push to `main` redeploys automatically.
+**Infrastructure**
+- Render
+- Neon PostgreSQL
 
-| Service | Render type | Folder | Notes |
-|---|---|---|---|
-| `meditrack-web-k2xy-k2xy` | Static site (global CDN) | `frontend/` | Every page served by `index.html`, plus security headers |
-| `meditrack-admin-k2xy-k2xy` | Static site (global CDN) | `admin/` | Admin portal |
-| `meditrack-api-k2xy-k2xy` | Node web service (Ohio) | `Backend/` | Health check `/health`; database check `/health/db` |
+## 📂 Project Structure
 
-Design choices:
-- **Database:** Neon PostgreSQL in us-east-2, the same area as the API's Ohio region.
-- **Redeploy-proof files:** uploaded files are stored in PostgreSQL (`StoredFile` table), not on Render's temporary disk, so they survive every redeploy. Medical records are only served to logged-in users with permission.
-- **Email over HTTPS:** emails go through Brevo's HTTPS API, because Render's free plan blocks email (SMTP) ports.
-- **Secrets stay in Render:** secrets live only in Render environment variables, and CORS is limited to the two frontend domains.
-- **Deployed with AI:** set up, configured and debugged through the Render MCP server.
+```text
+MediTrackUsable/
+├── Backend/
+│   ├── prisma/
+│   │   └── schema.prisma
+│   ├── src/
+│   ├── package.json
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── admin/
+│   ├── src/
+│   └── package.json
+├── render.yaml
+└── README.md
+```
 
-**Next on Render:** Workflows (a retryable prescription pipeline), Cron Jobs (medicine reminders in the patient's language), and a Private Service for medical data.
+## 🚀 Live Deployment
 
-## Tech stack
+| Service | Link |
+|---|---|
+| Main Application | [Open MediTrack](https://meditrack-web-k2xy-k2xy.onrender.com) |
+| Admin Portal | [Open Admin Dashboard](https://meditrack-admin-k2xy-k2xy.onrender.com) |
+| Backend API | [API Endpoint](https://meditrack-api-k2xy-k2xy.onrender.com) |
+| API Health Check | [Check API Status](https://meditrack-api-k2xy-k2xy.onrender.com/health) |
 
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, React Router, i18next
-- **Backend:** Node.js, Express 5, TypeScript, Prisma 5, PostgreSQL, JWT logins, Helmet, Multer
-- **AI and voice:**
-  - Google Gemini: consultation structuring and translation
-  - ElevenLabs: Scribe `scribe_v2_medical` for speech-to-text, `eleven_v4` for voice
-- **Email:** Brevo transactional API
-- **Hosting:** Render (Blueprint), Neon PostgreSQL
+The application is deployed using a Render Blueprint defined in [render.yaml](render.yaml). The API uses a health endpoint at `/health`; a database health endpoint is also available at `/health/db`.
 
-## Run locally
+**Deployment note:** The API currently uses Render's free service tier, which may spin down after inactivity. The first request after a period of inactivity can take longer while the service starts.
 
-Requires Node.js 22+.
+## 💻 Local Installation & Setup
+
+### Prerequisites
+- Node.js 22 or later
+- npm
+- A PostgreSQL database
+- Google OAuth credentials
+- API keys for the integrations you want to use
+
+### 1. Clone the Repository
 
 ```bash
-# 1. Backend: http://localhost:3000
+git clone https://github.com/Coderzer69/MediTrackUsable.git
+cd MediTrackUsable
+```
+
+### 2. Set Up the Backend
+
+```bash
 cd Backend
-cp .env.example .env        # fill in the values below
 npm install
+```
+
+Create a `.env` file from `.env.example` and configure the required environment variables.
+
+```bash
 npx prisma generate
 npm start
+```
 
-# 2. Main app: http://localhost:5173
+For local development, use:
+
+```bash
+npm run dev
+```
+
+Configure your local PostgreSQL database and apply the appropriate Prisma schema or migrations before starting the application.
+
+### 3. Set Up the Main Application
+
+Open a new terminal from the repository root:
+
+```bash
 cd frontend
 npm install
-npm run dev -- --port 5173
+```
 
-# 3. Admin portal: http://localhost:5174
+Create `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
+```
+
+Start the frontend:
+
+```bash
+npm run dev -- --port 5173
+```
+
+### 4. Set Up the Admin Portal
+
+Open another terminal from the repository root:
+
+```bash
 cd admin
 npm install
+```
+
+Create `admin/.env`:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+Start the admin portal:
+
+```bash
 npm run dev -- --port 5174
 ```
 
-On Windows you can instead double-click `restart-all.bat`, which frees ports 3000, 5173 and 5174 and starts all three apps.
+### Local URLs
 
-### Environment variables
+| Service | URL |
+|---|---|
+| Backend API | http://localhost:3000 |
+| Main Application | http://localhost:5173 |
+| Admin Portal | http://localhost:5174 |
 
-**Backend (`Backend/.env`)**
+On Windows, the repository also includes `restart-all.bat` to start the local services.
+
+## ⚙️ Environment Variables
+
+### Backend — `Backend/.env`
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Login token signing key (use a long random value) |
+| `PORT` | Backend server port |
+| `JWT_SECRET` | Secret used to sign authentication tokens |
 | `GOOGLE_CLIENT_ID` | Google sign-in client ID |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Consultation drafting and translation |
-| `ELEVENLABS_API_KEY` | Dictation and patient voice (optional: `ELEVENLABS_STT_MODEL`, `ELEVENLABS_TTS_MODEL`, `ELEVENLABS_VOICE_ID`) |
-| `BREVO_API_KEY`, `EMAIL_FROM_ADDRESS` | Prescription emails; the sender must be verified in Brevo (optional: `EMAIL_FROM_NAME`) |
-| `APP_URL` | Main app URL, used in email links |
-| `CORS_ORIGINS` | Comma-separated frontend URLs allowed to call the API (production) |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_MODEL` | Gemini model configuration |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key |
+| `ELEVENLABS_STT_MODEL` | Optional speech-to-text model configuration |
+| `ELEVENLABS_TTS_MODEL` | Optional text-to-speech model configuration |
+| `ELEVENLABS_VOICE_ID` | Optional voice configuration |
+| `BREVO_API_KEY` | Brevo transactional email API key |
+| `EMAIL_FROM_ADDRESS` | Verified sender email address |
+| `EMAIL_FROM_NAME` | Optional sender display name |
+| `APP_URL` | Main application URL used in email links |
+| `CORS_ORIGINS` | Comma-separated list of allowed frontend origins |
 
-Optional features turn themselves off when their keys are missing.
+### Main Application — `frontend/.env`
 
-**Frontend (`frontend/.env`), all public:**
-- `VITE_API_URL`: for example `http://localhost:3000/api`
-- `VITE_GOOGLE_CLIENT_ID`
+```env
+VITE_API_URL=http://localhost:3000/api
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
+```
 
-**Admin (`admin/.env`), public:**
-- `VITE_API_URL`
+### Admin Portal — `admin/.env`
 
-### Google sign-in
+```env
+VITE_API_URL=http://localhost:3000/api
+```
 
-Add your frontend URL (for example `http://localhost:5173`, or your Render URL) under **Authorized JavaScript origins** of the Google OAuth client. Use that client's ID for both `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`. While the Google app is in Testing mode, only accounts added as test users can sign in.
+Some integrations are optional and may be unavailable when their corresponding credentials are not configured.
 
-## Security notes
+### Google Sign-In Setup
 
-- Google sign-in accepts only Google-verified ID tokens, and public sign-up can create only patient or doctor accounts.
-- Role-based access control:
-  - patients see only their own data;
-  - doctors see a patient's history only after the patient approves;
-  - admins have full access.
-- Medical records and voice recordings are never publicly served. Uploads are checked by file content, not only by extension.
-- Medical content is never written to logs.
+1. Create or select an OAuth 2.0 client in the Google Cloud Console.
+2. Add your local frontend origin (for example, `http://localhost:5173`) and deployed frontend origin to **Authorized JavaScript origins**.
+3. Set the client ID as `GOOGLE_CLIENT_ID` in the backend and `VITE_GOOGLE_CLIENT_ID` in the frontend.
+4. If the OAuth consent screen is in Testing mode, add the accounts that need access as test users.
+
+## 🔐 Security & Privacy
+
+MediTrack includes security controls intended to protect account access and sensitive healthcare information:
+
+- Password hashing using bcrypt.
+- JWT-based authentication.
+- Google sign-in using verified Google ID tokens.
+- Role-based access control for patients, doctors, and administrators.
+- Public registration restricted to supported patient and doctor roles.
+- Doctor verification before prescription-related access.
+- Patient-controlled consent for doctor access to medical history.
+- Audit logging for sensitive actions.
+- CORS restrictions and Helmet security headers.
+- Authenticated access to stored patient documents and medical records.
+- File validation that checks content, not only the file extension.
+
+Never commit real API keys, database credentials, OAuth secrets, or JWT secrets to the repository. Use environment variables and rotate any credential that has been exposed.
+
+**Healthcare disclaimer:** MediTrack is a software project and should not be treated as a substitute for professional medical advice, diagnosis, or treatment. Any real-world deployment involving patient data should undergo appropriate security, privacy, clinical, and regulatory review.
+
+## 🤝 Contributing
+
+Contributions, bug reports, and feature suggestions are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Make your changes.
+4. Test the affected application components.
+5. Open a pull request with a clear description of the changes.
+
+## 📄 License
+
+No license file is currently specified in this repository. Unless a license is added, the project should not be assumed to be available for unrestricted reuse or redistribution.
